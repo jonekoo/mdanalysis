@@ -36,6 +36,7 @@ Also free to ask on the MDAnalysis mailing list for help:
 (Note that the group really is called `mdnalysis-discussion' because
 Google groups forbids any name that contains the string `anal'.)
 """
+
 from __future__ import print_function
 from setuptools import setup, Extension, find_packages
 from distutils.ccompiler import new_compiler
@@ -374,8 +375,7 @@ if __name__ == '__main__':
           # you might prefer to use the version available through your
           # packaging system
           extras_require={
-              'AMBER': ['netCDF4>=1.0'],  # for AMBER netcdf, also needs HDF5
-                                          # and netcdf-4
+              'AMBER': ['scipy'],  # for AMBER netcdf, (does NOT need HDF5)
               'analysis': [
                   'matplotlib',
                   'scipy',
