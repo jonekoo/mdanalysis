@@ -17,7 +17,7 @@ from MDAnalysisTests.coordinates.test_trj import _TRJReaderTest
 from MDAnalysisTests.coordinates.reference import (RefVGV, RefTZ2)
 
 class _NCDFReaderTest(_TRJReaderTest):
-    @dec.skipif(module_not_found("netCDF4"), "Test skipped because netCDF is not available.")
+    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.universe = mda.Universe(self.topology, self.filename)
         self.prec = 3
@@ -47,7 +47,7 @@ class TestNCDFReader2(TestCase):
     Contributed by Albert Solernou
     """
 
-    @dec.skipif(module_not_found("netCDF4"), "Test skipped because netCDF is not available.")
+    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.u = mda.Universe(PFncdf_Top, PFncdf_Trj)
         self.prec = 3
@@ -104,7 +104,7 @@ class TestNCDFReader2(TestCase):
 
 
 class _NCDFWriterTest(TestCase):
-    @dec.skipif(module_not_found("netCDF4"), "Test skipped because netCDF is not available.")
+    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.universe = mda.Universe(self.topology, self.filename)
         self.prec = 5
@@ -266,7 +266,7 @@ class TestNCDFWriterTZ2(_NCDFWriterTest, RefTZ2):
 class TestNCDFWriterVelsForces(TestCase):
     """Test writing NCDF trajectories with a mixture of options"""
 
-    @dec.skipif(module_not_found("netCDF4"), "Test skipped because netCDF is not available.")
+    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.tmpdir = tempdir.TempDir()
         self.outfile = self.tmpdir.name + '/ncdf-write-vels-force.ncdf'
