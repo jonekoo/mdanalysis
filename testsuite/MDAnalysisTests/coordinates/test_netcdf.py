@@ -3,6 +3,12 @@ import numpy as np
 import os
 from six.moves import zip
 
+try:
+    import scipy.io.netcdf
+except ImportError:
+    # install scipy; all tests will be skipped
+    pass
+
 from nose.plugins.attrib import attr
 from numpy.testing import (assert_equal, assert_array_almost_equal,
                            assert_array_equal,
@@ -129,15 +135,19 @@ class _NCDFWriterTest(TestCase):
         with self.Writer(self.outfile, t.n_atoms, dt=t.dt) as W:
             self._copy_traj(W)
         self._check_new_traj()
-        import netCDF4
         #for issue #518 -- preserve float32 data in ncdf output
-        dataset = netCDF4.Dataset(self.outfile, 'r', format='NETCDF3')
+        # NOTE: On Linux this failed with the dtype('>f4') instead
+        #       of dtype('<f4') == dtype('f') == np.float32 [orbeckst]
+        #       Might be related to issue #551.
+        dataset = scipy.io.netcdf.netcdf_file(self.outfile, 'r')
         coords = dataset.variables['coordinates']
         time = dataset.variables['time']
-        assert_equal(coords.dtype, np.float32,
-                     err_msg='ncdf coord output not float32')
-        assert_equal(time.dtype, np.float32,
-                     err_msg='ncdf time output not float32')
+        assert_equal(coords[:].dtype, np.float32,
+                     err_msg='ncdf coord output not float32 '
+                             'but {}'.format(coords[:].dtype))
+        assert_equal(time[:].dtype, np.float32,
+                err_msg='ncdf time output not float32 '
+                        'but {}'.format(time[:].dtype))
 
     def test_OtherWriter(self):
         t = self.universe.trajectory
