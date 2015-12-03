@@ -136,16 +136,20 @@ class _NCDFWriterTest(TestCase):
             self._copy_traj(W)
         self._check_new_traj()
         #for issue #518 -- preserve float32 data in ncdf output
-        # NOTE: On Linux this failed with the dtype('>f4') instead
-        #       of dtype('<f4') == dtype('f') == np.float32 [orbeckst]
-        #       Might be related to issue #551.
+        # NOTE: This originally failed with the dtype('>f4') instead
+        #       of dtype('<f4') == dtype('f') == np.float32, i.e. then
+        #       endianness is different. The current hack-ish solution
+        #       ignores endianness by comparing the name of the types,
+        #       which should be "float32".
+        #       See http://docs.scipy.org/doc/numpy-1.10.0/reference/arrays.dtypes.html
+        #       and https://github.com/MDAnalysis/mdanalysis/pull/503
         dataset = scipy.io.netcdf.netcdf_file(self.outfile, 'r')
         coords = dataset.variables['coordinates']
         time = dataset.variables['time']
-        assert_equal(coords[:].dtype, np.float32,
+        assert_equal(coords[:].dtype.name, np.dtype(np.float32).name,
                      err_msg='ncdf coord output not float32 '
                              'but {}'.format(coords[:].dtype))
-        assert_equal(time[:].dtype, np.float32,
+        assert_equal(time[:].dtype.name, np.dtype(np.float32).name,
                 err_msg='ncdf time output not float32 '
                         'but {}'.format(time[:].dtype))
 
