@@ -103,7 +103,10 @@ Changes
     use density_from_Universe(TOPOL, TRAJ) instead.
   * MOL2Writer.write now only writes a single frame (Issue #521)
   * use scipy.io.netcdf pure python implementation for reading of Amber
-    netcdf3 trajctories instead of netCDF4 + netcdf lib (see also Issue #488)
+    netcdf3 trajctories instead of netCDF4 + netcdf lib (see also
+    Issue #506)
+  * bundled scipy.io.netcdf (v0.16.1) as lib.netcdf as a fallback for
+    scipy.io.netcdf so that Amber NC trajectories can always be read
 
 Fixes
 

@@ -4,10 +4,10 @@ import os
 from six.moves import zip
 
 try:
-    import scipy.io.netcdf
+    from scipy.io import netcdf
 except ImportError:
-    # install scipy; all tests will be skipped
-    pass
+    # fall back (should ALWAYS work)
+    from MDAnalysis.lib import netcdf
 
 from nose.plugins.attrib import attr
 from numpy.testing import (assert_equal, assert_array_almost_equal,
@@ -23,7 +23,6 @@ from MDAnalysisTests.coordinates.test_trj import _TRJReaderTest
 from MDAnalysisTests.coordinates.reference import (RefVGV, RefTZ2)
 
 class _NCDFReaderTest(_TRJReaderTest):
-    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.universe = mda.Universe(self.topology, self.filename)
         self.prec = 3
@@ -53,7 +52,6 @@ class TestNCDFReader2(TestCase):
     Contributed by Albert Solernou
     """
 
-    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.u = mda.Universe(PFncdf_Top, PFncdf_Trj)
         self.prec = 3
@@ -110,7 +108,6 @@ class TestNCDFReader2(TestCase):
 
 
 class _NCDFWriterTest(TestCase):
-    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.universe = mda.Universe(self.topology, self.filename)
         self.prec = 5
@@ -143,7 +140,7 @@ class _NCDFWriterTest(TestCase):
         #       which should be "float32".
         #       See http://docs.scipy.org/doc/numpy-1.10.0/reference/arrays.dtypes.html
         #       and https://github.com/MDAnalysis/mdanalysis/pull/503
-        dataset = scipy.io.netcdf.netcdf_file(self.outfile, 'r')
+        dataset = netcdf.netcdf_file(self.outfile, 'r')
         coords = dataset.variables['coordinates']
         time = dataset.variables['time']
         assert_equal(coords[:].dtype.name, np.dtype(np.float32).name,
@@ -186,6 +183,8 @@ class _NCDFWriterTest(TestCase):
         nc_orig = self.universe.trajectory.trjfile
         nc_copy = uw.trajectory.trjfile
 
+        # note that here 'dimensions' is a specific netcdf data structure and
+        # not the unit cell dimensions in MDAnalysis
         for k, dim in nc_orig.dimensions.items():
             try:
                 dim_new = nc_copy.dimensions[k]
@@ -193,7 +192,7 @@ class _NCDFWriterTest(TestCase):
                 raise AssertionError("NCDFWriter did not write "
                                      "dimension '{0}'".format(k))
             else:
-                assert_equal(len(dim), len(dim_new),
+                assert_equal(dim, dim_new,
                              err_msg="Dimension '{0}' size mismatch".format(k))
 
         for k, v in nc_orig.variables.items():
@@ -280,10 +279,9 @@ class TestNCDFWriterTZ2(_NCDFWriterTest, RefTZ2):
 class TestNCDFWriterVelsForces(TestCase):
     """Test writing NCDF trajectories with a mixture of options"""
 
-    @dec.skipif(module_not_found("scipy.io.netcdf"), "Test skipped because scipy.io.netcdf is not available.")
     def setUp(self):
         self.tmpdir = tempdir.TempDir()
-        self.outfile = self.tmpdir.name + '/ncdf-write-vels-force.ncdf'
+        self.outfile = os.path.join(self.tmpdir.name, 'ncdf-write-vels-force.ncdf')
         self.prec = 3
         self.top = XYZ_mini
         self.n_atoms = 3
