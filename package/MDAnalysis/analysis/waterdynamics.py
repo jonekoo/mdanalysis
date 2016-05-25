@@ -523,15 +523,16 @@ class HydrogenBondLifetimes(object):
 
 class WaterOrientationalRelaxation(object):
     r"""
-    Function to evaluate the Water Orientational Relaxation proposed by Yu-ling Yeh
-    and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation indicates "how fast" water molecules are rotating
-    or changing direction. This is a time correlation function given by:
+    Function to evaluate the Water Orientational Relaxation proposed by 
+    Yu-ling Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation
+    indicates "how fast" water molecules are rotating or changing
+    direction. This is a time correlation function given by:
 
     .. math::
         C_{\hat u}(\tau)=\langle \mathit{P}_2[\mathbf{\hat{u}}(t_0)\cdot\mathbf{\hat{u}}(t_0+\tau)]\rangle
 
-    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial and :math:`\hat{u}` is
-    a unit vector along HH, OH or dipole vector.
+    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial and
+    :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
 
     .. versionadded:: 0.11.0
 
@@ -546,6 +547,8 @@ class WaterOrientationalRelaxation(object):
        Time where analysis end
       *dtmax*
        Maximum dt size window, dtmax < tf or it will crash.
+      *dtmin*
+       Minimum dt size window, 0 < dtmin < dtmax.
 
     """
 
@@ -562,7 +565,9 @@ class WaterOrientationalRelaxation(object):
     def _repeatedIndex(self,selection,dt,totalFrames):
         """
         Indicate the comparation between all the t+dt.
-        The results is a list of list with all the repeated index per frame (or time).
+        The results is a list of list with all the repeated index per
+        frame (or time).
+
         Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
@@ -575,7 +580,9 @@ class WaterOrientationalRelaxation(object):
 
     def _getOneDeltaPoint(self,universe, repInd, i ,t0, dt):
         """
-        Give one point to promediate and get one point of the graphic  C_vect vs t
+        Give one point to promediate and get one point of the graphic
+        C_vect vs t.
+
         Ex: t0=1 and tau=1 so calculate the t0-tau=1-2 intervale.
         Ex: t0=5 and tau=3 so calcultate the t0-tau=5-8 intervale.
         i = come from getMeanOnePoint (named j) (int)
@@ -643,8 +650,9 @@ class WaterOrientationalRelaxation(object):
         valdipList = []
 
         for j in range(totalFrames/dt-1):
-            # If the selection of atoms is too small, there will be a division by zero in the next line.
-            # The except clause avoid the use of the result of _getOneDeltaPoint() on the mean.
+            # If the selection of atoms is too small, there will be a
+            # division by zero in the next line. The except clause avoid
+            # the use of the result of _getOneDeltaPoint() on the mean.
             try:
                 a = self._getOneDeltaPoint(universe,repInd,j,sumsdt,dt)
             except ZeroDivisionError:
@@ -661,10 +669,11 @@ class WaterOrientationalRelaxation(object):
 
     def _sameMolecTandDT(self,selection,t0d,tf):
         """
-        Compare the molecules in the t0d selection and the t0d+dt selection and
-        select only the particles that are repeated in both frame. This is to consider
-        only the molecules that remains in the selection after the dt time has elapsed.
-        The result is a list with the indexs of the atoms.
+        Compare the molecules in the t0d selection and the t0d+dt
+        selection and select only the particles that are repeated in both
+        frames. This is to consider only the molecules that remains in the
+        selection after the dt time has elapsed. The result is a list with
+        the indexs of the atoms.
         """
         a = set(selection[t0d])
         b = set(selection[tf])
@@ -686,16 +695,22 @@ class WaterOrientationalRelaxation(object):
         Analyze trajectory and produce timeseries
         """
 
-        #All the selection to an array, this way is faster than selecting later.
-        if self.nproc==1:
-            selection_out = self._selection_serial(self.universe,self.selection)
+        # All the selection to an array, this way is sometimes faster than
+        # selecting later. 
+        if self.nproc == 1:
+            selection_out = self._selection_serial(self.universe,
+                                                   self.selection)
         else:
-            #selection_out = self._selection_parallel(self.universe,self.selection,self.nproc)
+            #selection_out = self._selection_parallel(self.universe,
+            #                                         self.selection,
+            #                                         self.nproc)
             #parallel selection to be implemented
-            selection_out = self._selection_serial(self.universe,self.selection)
+            selection_out = self._selection_serial(self.universe,
+                                                   self.selection)
         self.timeseries = []
         for dt in range(self.dtmin, self.dtmax + 1):
-            output = self._getMeanOnePoint(self.universe,selection_out,self.selection,dt,self.tf)
+            output = self._getMeanOnePoint(self.universe,selection_out,
+                                           self.selection,dt,self.tf)
             self.timeseries.append(output)
 
 

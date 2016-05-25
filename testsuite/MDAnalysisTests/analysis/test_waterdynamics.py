@@ -43,7 +43,8 @@ class TestWaterdynamics(TestCase):
         assert_equal(round(wor.timeseries[1][2],5), 0.35887)
 
     def test_WaterOrientationalRelaxation_dtmin(self):
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(self.universe, self.selection1, 0, 5, 2, dtmin=2)
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            self.universe, self.selection1, 0, 5, 2, dtmin=2)
         wor.run(quiet=True)
         assert_equal(round(wor.timeseries[0][2],5), 0.35887)
 
