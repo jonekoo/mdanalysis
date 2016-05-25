@@ -549,11 +549,12 @@ class WaterOrientationalRelaxation(object):
 
     """
 
-    def __init__(self,universe,selection,t0,tf,dtmax,nproc=1):
+    def __init__(self,universe,selection,t0,tf,dtmax,nproc=1,dtmin=1):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
         self.tf = tf
+        self.dtmin = dtmin
         self.dtmax= dtmax
         self.nproc = nproc
         self.timeseries = None
@@ -693,7 +694,7 @@ class WaterOrientationalRelaxation(object):
             #parallel selection to be implemented
             selection_out = self._selection_serial(self.universe,self.selection)
         self.timeseries = []
-        for dt in list(range(1,self.dtmax+1)):
+        for dt in range(self.dtmin, self.dtmax + 1):
             output = self._getMeanOnePoint(self.universe,selection_out,self.selection,dt,self.tf)
             self.timeseries.append(output)
 
