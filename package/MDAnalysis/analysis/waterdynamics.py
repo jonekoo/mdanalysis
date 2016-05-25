@@ -523,7 +523,7 @@ class HydrogenBondLifetimes(object):
 
 class WaterOrientationalRelaxation(object):
     r"""
-    Function to evaluate the Water Orientational Relaxation proposed by 
+    Function to evaluate the Water Orientational Relaxation proposed by
     Yu-ling Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation
     indicates "how fast" water molecules are rotating or changing
     direction. This is a time correlation function given by:
@@ -531,8 +531,8 @@ class WaterOrientationalRelaxation(object):
     .. math::
         C_{\hat u}(\tau)=\langle \mathit{P}_2[\mathbf{\hat{u}}(t_0)\cdot\mathbf{\hat{u}}(t_0+\tau)]\rangle
 
-    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial and
-    :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
+    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial
+    and :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
 
     .. versionadded:: 0.11.0
 
@@ -540,7 +540,8 @@ class WaterOrientationalRelaxation(object):
       *universe*
          Universe object
       *selection*
-       Selection string, only models with 3 atoms molecules are allowed (TIP3, TIP3P, etc)
+       Selection string, only models with 3 atoms molecules are allowed
+       (TIP3, TIP3P, etc)
       *t0*
        Time where analysis begin
       *tf*
@@ -549,10 +550,14 @@ class WaterOrientationalRelaxation(object):
        Maximum dt size window, dtmax < tf or it will crash.
       *dtmin*
        Minimum dt size window, 0 < dtmin < dtmax.
+      *prefetch*
+       When True, the selection is fetched into memory from the whole
+       trajectory.
 
     """
 
-    def __init__(self,universe,selection,t0,tf,dtmax,nproc=1,dtmin=1):
+    def __init__(self,universe,selection,t0,tf,dtmax,nproc=1,dtmin=1,
+                 prefetch=True):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
@@ -560,6 +565,7 @@ class WaterOrientationalRelaxation(object):
         self.dtmin = dtmin
         self.dtmax= dtmax
         self.nproc = nproc
+        self.prefetch = prefetch
         self.timeseries = None
 
     def _repeatedIndex(self,selection,dt,totalFrames):
@@ -567,7 +573,7 @@ class WaterOrientationalRelaxation(object):
         Indicate the comparation between all the t+dt.
         The results is a list of list with all the repeated index per
         frame (or time).
-
+        
         Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
@@ -578,7 +584,8 @@ class WaterOrientationalRelaxation(object):
                 rep.append(self._sameMolecTandDT(selection,dt*i,(dt*i)+dt))
         return rep
 
-    def _getOneDeltaPoint(self,universe, repInd, i ,t0, dt):
+
+    def _getOneDeltaPoint(self, universe, repInd, i ,t0, dt):
         """
         Give one point to promediate and get one point of the graphic
         C_vect vs t.
@@ -590,48 +597,92 @@ class WaterOrientationalRelaxation(object):
         valOH = 0
         valHH = 0
         valdip= 0
-        n = 0
-        for j in range(len(repInd[i])/3):
-            begj =  3*j
-            universe.trajectory[t0]
-            Ot0 = repInd[i][begj]
-            H1t0 = repInd[i][begj+1]
-            H2t0 = repInd[i][begj+2]
-            OHVector0 = H1t0.position - Ot0.position
-            HHVector0 = H1t0.position-H2t0.position
-            dipVector0 = ((H1t0.position + H2t0.position)*0.5)-Ot0.position
-
+        
+        if repInd is None:
             universe.trajectory[t0+dt]
-            Otp = repInd[i][begj]
-            H1tp = repInd[i][begj+1]
-            H2tp = repInd[i][begj+2]
+            selectionp = universe.select_atoms(self.selection)
+            universe.trajectory[t0]
+            selection0 = universe.select_atoms(self.selection)
+            repInd2 = list(set(selectionp).intersection(set(selection0)))
+            repInd2.sort()
+        else:
+            universe.trajectory[t0]
+            repInd2 = repInd[i]
 
-            OHVectorp = H1tp.position- Otp.position
-            HHVectorp = H1tp.position - H2tp.position
-            dipVectorp = ((H1tp.position + H2tp.position)*0.5)-Otp.position
+        nvecs = len(repInd2) / 3
+
+        unitOHVector0 = np.zeros((nvecs, 3))
+        unitHHVector0 = np.zeros((nvecs, 3))
+        unitdipVector0 = np.zeros((nvecs, 3))
+
+        for j in range(nvecs):
+            begj =  3*j
+
+            # Compute unit vectors of orientation at t0
+            Ot0 = repInd2[begj]
+            H1t0 = repInd2[begj+1]
+            H2t0 = repInd2[begj+2]
+            OHVector0 = H1t0.position - Ot0.position
+            HHVector0 = H1t0.position - H2t0.position
+            dipVector0 = ((H1t0.position + H2t0.position) * 0.5) - Ot0.position
 
             normOHVector0 = np.linalg.norm(OHVector0)
-            normOHVectorp = np.linalg.norm(OHVectorp)
+            # This is only around 20% faster than the line above:
+            #normOHVector0 = np.sqrt(OHVector0[0]**2 + OHVector0[1]**2 + \
+            #    OHVector0[2]**2)
             normHHVector0 = np.linalg.norm(HHVector0)
-            normHHVectorp = np.linalg.norm(HHVectorp)
             normdipVector0 = np.linalg.norm(dipVector0)
+
+            unitOHVector0[j, :] = [OHVector0[0]/normOHVector0, 
+                             OHVector0[1]/normOHVector0,
+                             OHVector0[2]/normOHVector0]
+            unitHHVector0[j, :] = [HHVector0[0]/normHHVector0,
+                             HHVector0[1]/normHHVector0,
+                             HHVector0[2]/normHHVector0]
+            unitdipVector0[j, :] = [dipVector0[0]/normdipVector0,
+                              dipVector0[1]/normdipVector0,
+                              dipVector0[2]/normdipVector0]
+
+        unitOHVectorp = np.zeros((nvecs, 3))
+        unitHHVectorp = np.zeros((nvecs, 3))
+        unitdipVectorp = np.zeros((nvecs, 3))
+        universe.trajectory[t0+dt]
+        for j in range(nvecs):
+            begj = 3 * j
+            # Compute unit vectors of orientation at t0 + dt = tp
+            Otp = repInd2[begj]
+            H1tp = repInd2[begj+1]
+            H2tp = repInd2[begj+2]
+
+            OHVectorp = H1tp.position - Otp.position
+            HHVectorp = H1tp.position - H2tp.position
+            dipVectorp = ((H1tp.position + H2tp.position) * 0.5) - Otp.position
+
+            normOHVectorp = np.linalg.norm(OHVectorp)
+            normHHVectorp = np.linalg.norm(HHVectorp)
             normdipVectorp = np.linalg.norm(dipVectorp)
 
-            unitOHVector0 = [OHVector0[0]/normOHVector0,OHVector0[1]/normOHVector0,OHVector0[2]/normOHVector0]
-            unitOHVectorp = [OHVectorp[0]/normOHVectorp,OHVectorp[1]/normOHVectorp,OHVectorp[2]/normOHVectorp]
-            unitHHVector0 = [HHVector0[0]/normHHVector0,HHVector0[1]/normHHVector0,HHVector0[2]/normHHVector0]
-            unitHHVectorp = [HHVectorp[0]/normHHVectorp,HHVectorp[1]/normHHVectorp,HHVectorp[2]/normHHVectorp]
-            unitdipVector0 = [dipVector0[0]/normdipVector0,dipVector0[1]/normdipVector0,dipVector0[2]/normdipVector0]
-            unitdipVectorp = [dipVectorp[0]/normdipVectorp,dipVectorp[1]/normdipVectorp,dipVectorp[2]/normdipVectorp]
+            unitOHVectorp[j, :] = [OHVectorp[0]/normOHVectorp,
+                                   OHVectorp[1]/normOHVectorp,
+                                   OHVectorp[2]/normOHVectorp]
+            unitHHVectorp[j, :] = [HHVectorp[0]/normHHVectorp,
+                                   HHVectorp[1]/normHHVectorp,
+                                   HHVectorp[2]/normHHVectorp]
+            unitdipVectorp[j, :] = [dipVectorp[0]/normdipVectorp,
+                                    dipVectorp[1]/normdipVectorp,
+                                    dipVectorp[2]/normdipVectorp]
 
-            valOH += self.lg2(np.dot(unitOHVector0,unitOHVectorp))
-            valHH += self.lg2(np.dot(unitHHVector0,unitHHVectorp))
-            valdip +=  self.lg2(np.dot(unitdipVector0,unitdipVectorp))
-            n += 1
-        valOH = valOH/n
-        valHH = valHH/n
-        valdip = valdip/n
-        return (valOH,valHH,valdip)
+        for j in range(nvecs):
+            # Compute contributions to the orientational autocorrelations.
+            valOH += self.lg2(np.dot(unitOHVector0[j, :], unitOHVectorp[j, :]))
+            valHH += self.lg2(np.dot(unitHHVector0[j, :], unitHHVectorp[j, :]))
+            valdip +=  self.lg2(np.dot(unitdipVector0[j, :], 
+                                       unitdipVectorp[j, :]))
+        valOH = valOH / nvecs
+        valHH = valHH /  nvecs
+        valdip = valdip / nvecs
+        return (valOH, valHH, valdip)
+
 
     def _getMeanOnePoint(self,universe,selection1,selection_str,dt,totalFrames):
         """
@@ -639,7 +690,11 @@ class WaterOrientationalRelaxation(object):
         _getOneDeltaPoint() function to calculate the average.
 
         """
-        repInd = self._repeatedIndex(selection1,dt,totalFrames)
+        if selection1 is None:
+            repInd = None
+        else:
+            repInd = self._repeatedIndex(selection1,dt,totalFrames)
+
         sumsdt = 0
         n = 0.0
         sumDeltaOH = 0.0
@@ -694,21 +749,25 @@ class WaterOrientationalRelaxation(object):
         """
         Analyze trajectory and produce timeseries
         """
-
-        # All the selection to an array, this way is sometimes faster than
-        # selecting later. 
-        if self.nproc == 1:
-            selection_out = self._selection_serial(self.universe,
-                                                   self.selection)
+        
+        if self.prefetch:
+            # All the selection to an array, this way is sometimes faster
+            # than selecting later. The array must fit to RAM.
+            if self.nproc==1:
+                selection_out = self._selection_serial(self.universe,
+                                                       self.selection)
+            else:
+                #selection_out = self._selection_parallel(self.universe,
+                #                                         self.selection,
+                #                                         self.nproc)
+                #parallel selection to be implemented
+                selection_out = self._selection_serial(self.universe,
+                                                       self.selection)
         else:
-            #selection_out = self._selection_parallel(self.universe,
-            #                                         self.selection,
-            #                                         self.nproc)
-            #parallel selection to be implemented
-            selection_out = self._selection_serial(self.universe,
-                                                   self.selection)
+            selection_out = None
         self.timeseries = []
         for dt in range(self.dtmin, self.dtmax + 1):
+            print("Processing dt = ", dt)
             output = self._getMeanOnePoint(self.universe,selection_out,
                                            self.selection,dt,self.tf)
             self.timeseries.append(output)

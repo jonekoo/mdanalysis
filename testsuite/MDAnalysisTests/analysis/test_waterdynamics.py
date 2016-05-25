@@ -48,6 +48,12 @@ class TestWaterdynamics(TestCase):
         wor.run(quiet=True)
         assert_equal(round(wor.timeseries[0][2],5), 0.35887)
 
+    def test_WaterOrientationalRelaxation_prefetch(self):
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            self.universe, self.selection1, 0, 5, 2, prefetch=False)
+        wor.run(quiet=True)
+        assert_equal(round(wor.timeseries[1][2],5), 0.35887)
+
     def test_AngularDistribution(self):
         ad = MDAnalysis.analysis.waterdynamics.AngularDistribution(self.universe,self.selection1,40)
         ad.run(quiet=True)
