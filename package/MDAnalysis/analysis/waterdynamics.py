@@ -1,9 +1,9 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
 # MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning,
+# Oliver Beckstein and contributors (see AUTHORS for the full list)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
@@ -24,36 +24,53 @@ Water dynamics analysis --- :mod:`MDAnalysis.analysis.waterdynamics`
 
 .. versionadded:: 0.11.0
 
-This module provides functions to analize water dynamics trajectories and water interactions with other molecules.
-The functions in this module are: water orientational relaxation (WOR) [Yeh1999]_, hydrogen bond lifetimes (HBL) [Rapaport1983]_,
-angular distribution (AD) [Grigera1995]_, mean square displacement (MSD) [Brodka1994]_ and survival probability (SP) [Liu2004]_.
+This module provides functions to analize water dynamics trajectories and
+water interactions with other molecules. The functions in this module are:
+water orientational relaxation (WOR) [Yeh1999]_, hydrogen bond lifetimes
+(HBL) [Rapaport1983]_, angular distribution (AD) [Grigera1995]_, mean
+square displacement (MSD) [Brodka1994]_ and survival probability (SP)
+[Liu2004]_.
 
-For more information about this type of analysis please refer to [Araya-Secchi2014]_ (water in a protein cavity) and [Milischuk2011]_ (water in a nanopore).
+For more information about this type of analysis please refer to
+[Araya-Secchi2014]_ (water in a protein cavity) and [Milischuk2011]_
+(water in a nanopore).
 
 .. rubric:: References
 
-.. [Rapaport1983] D.C. Rapaport (1983): Hydrogen bonds in water, Molecular Physics: An International
-            Journal at the Interface Between Chemistry and Physics, 50:5, 1151-1162.
+.. [Rapaport1983] D.C. Rapaport (1983): Hydrogen bonds in water, Molecular
+                  Physics: An International Journal at the Interface
+                  Between Chemistry and Physics, 50:5, 1151-1162.
 
 .. [Yeh1999] Yu-ling Yeh and Chung-Yuan Mou (1999).
-             Orientational Relaxation Dynamics of Liquid Water Studied by Molecular Dynamics
-             Simulation, J. Phys. Chem. B 1999, 103, 3699-3705.
+             Orientational Relaxation Dynamics of Liquid Water Studied by
+             Molecular Dynamics Simulation, J. Phys. Chem. B 1999, 103,
+             3699-3705.
 
-.. [Grigera1995] Raul Grigera, Susana G. Kalko and Jorge Fischbarg (1995). Wall-Water Interface.
-                  A Molecular Dynamics Study, Langmuir 1996,12,154-158
+.. [Grigera1995] Raul Grigera, Susana G. Kalko and Jorge Fischbarg (1995).
+                 Wall-Water Interface. A Molecular Dynamics Study,
+                 Langmuir 1996,12,154-158
 
-.. [Liu2004] Pu Liu, Edward Harder, and B. J. Berne (2004).On the Calculation of Diffusion Coefficients
-             in Confined Fluids and Interfaces with an Application to the Liquid-Vapor Interface of
-             Water, J. Phys. Chem. B 2004, 108, 6595-6602.
+.. [Liu2004] Pu Liu, Edward Harder, and B. J. Berne (2004).
+             On the Calculation of Diffusion Coefficients in Confined
+             Fluids and Interfaces with an Application to the Liquid-Vapor
+             Interface of Water, J. Phys. Chem. B 2004, 108, 6595-6602.
 
-.. [Brodka1994] Aleksander Brodka (1994). Diffusion in restricted volume, Molecular Physics, 1994, Vol.
-                82, No. 5, 1075-1078.
+.. [Brodka1994] Aleksander Brodka (1994).
+                Diffusion in restricted volume, Molecular Physics, 1994,
+                Vol. 82, No. 5, 1075-1078.
 
-.. [Araya-Secchi2014] Araya-Secchi, R., Tomas Perez-Acle, Seung-gu Kang, Tien Huynh, Alejandro Bernardin, Yerko Escalona, Jose-Antonio Garate, Agustin D. Martinez,
-                     Isaac E. Garcia, Juan C. Saez, Ruhong Zhou (2014). Characterization of a novel water pocket inside the human Cx26 hemichannel structure. Biophysical journal, 107(3), 599-612.
+.. [Araya-Secchi2014] Araya-Secchi, R., Tomas Perez-Acle, Seung-gu Kang,
+                      Tien Huynh, Alejandro Bernardin, Yerko Escalona,
+                      Jose-Antonio Garate, Agustin D. Martinez, Isaac E.
+                      Garcia, Juan C. Saez, Ruhong Zhou (2014).
+                      Characterization of a novel water pocket inside the
+                      human Cx26 hemichannel structure.
+                      Biophysical journal, 107(3), 599-612.
 
-.. [Milischuk2011] Anatoli A. Milischuk and Branka M. Ladanyi. Structure and dynamics of water confined
-                    in silica nanopores. J. Chem. Phys. 135, 174709 (2011); doi: 10.1063/1.3657408
+.. [Milischuk2011] Anatoli A. Milischuk and Branka M. Ladanyi.
+                   Structure and dynamics of water confined in silica
+                   nanopores. J. Chem. Phys. 135, 174709 (2011);
+                   doi: 10.1063/1.3657408
 
 
 
@@ -521,6 +538,7 @@ class HydrogenBondLifetimes(object):
             h_list.run(**kwargs)
             self.timeseries = self._getGraphics(h_list.timeseries, self.t0, self.tf, self.dtmax)
 
+
 class WaterOrientationalRelaxation(object):
     r"""
     Function to evaluate the Water Orientational Relaxation proposed by
@@ -556,19 +574,19 @@ class WaterOrientationalRelaxation(object):
 
     """
 
-    def __init__(self,universe,selection,t0,tf,dtmax,nproc=1,dtmin=1,
+    def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
                  prefetch=True):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
         self.tf = tf
         self.dtmin = dtmin
-        self.dtmax= dtmax
+        self.dtmax = dtmax
         self.nproc = nproc
         self.prefetch = prefetch
         self.timeseries = None
 
-    def _repeatedIndex(self,selection,dt,totalFrames):
+    def _repeatedIndex(self, selection, dt, totalFrames):
         """
         Indicate the comparation between all the t+dt.
         The results is a list of list with all the repeated index per
@@ -578,14 +596,13 @@ class WaterOrientationalRelaxation(object):
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
         """
-        rep=[]
-        for i in range(int(round( (totalFrames-1)/float(dt) ) ) ):
-            if (  dt*i+dt < totalFrames ):
-                rep.append(self._sameMolecTandDT(selection,dt*i,(dt*i)+dt))
+        rep = []
+        for i in range(int(round((totalFrames-1)/float(dt)))):
+            if dt*i+dt < totalFrames:
+                rep.append(self._sameMolecTandDT(selection, dt*i, (dt*i)+dt))
         return rep
 
-
-    def _getOneDeltaPoint(self, universe, repInd, i ,t0, dt):
+    def _getOneDeltaPoint(self, universe, repInd, i, t0, dt):
         """
         Give one point to promediate and get one point of the graphic
         C_vect vs t.
@@ -596,7 +613,7 @@ class WaterOrientationalRelaxation(object):
         """
         valOH = 0
         valHH = 0
-        valdip= 0
+        valdip = 0
         
         if repInd is None:
             universe.trajectory[t0+dt]
@@ -616,7 +633,7 @@ class WaterOrientationalRelaxation(object):
         unitdipVector0 = np.zeros((nvecs, 3))
 
         for j in range(nvecs):
-            begj =  3*j
+            begj = 3*j
 
             # Compute unit vectors of orientation at t0
             Ot0 = repInd2[begj]
@@ -628,20 +645,20 @@ class WaterOrientationalRelaxation(object):
 
             normOHVector0 = np.linalg.norm(OHVector0)
             # This is only around 20% faster than the line above:
-            #normOHVector0 = np.sqrt(OHVector0[0]**2 + OHVector0[1]**2 + \
+            # normOHVector0 = np.sqrt(OHVector0[0]**2 + OHVector0[1]**2 + \
             #    OHVector0[2]**2)
             normHHVector0 = np.linalg.norm(HHVector0)
             normdipVector0 = np.linalg.norm(dipVector0)
 
-            unitOHVector0[j, :] = [OHVector0[0]/normOHVector0, 
-                             OHVector0[1]/normOHVector0,
-                             OHVector0[2]/normOHVector0]
+            unitOHVector0[j, :] = [OHVector0[0]/normOHVector0,
+                                   OHVector0[1]/normOHVector0,
+                                   OHVector0[2]/normOHVector0]
             unitHHVector0[j, :] = [HHVector0[0]/normHHVector0,
-                             HHVector0[1]/normHHVector0,
-                             HHVector0[2]/normHHVector0]
+                                   HHVector0[1]/normHHVector0,
+                                   HHVector0[2]/normHHVector0]
             unitdipVector0[j, :] = [dipVector0[0]/normdipVector0,
-                              dipVector0[1]/normdipVector0,
-                              dipVector0[2]/normdipVector0]
+                                    dipVector0[1]/normdipVector0,
+                                    dipVector0[2]/normdipVector0]
 
         unitOHVectorp = np.zeros((nvecs, 3))
         unitHHVectorp = np.zeros((nvecs, 3))
@@ -676,15 +693,15 @@ class WaterOrientationalRelaxation(object):
             # Compute contributions to the orientational autocorrelations.
             valOH += self.lg2(np.dot(unitOHVector0[j, :], unitOHVectorp[j, :]))
             valHH += self.lg2(np.dot(unitHHVector0[j, :], unitHHVectorp[j, :]))
-            valdip +=  self.lg2(np.dot(unitdipVector0[j, :], 
-                                       unitdipVectorp[j, :]))
+            valdip += self.lg2(np.dot(unitdipVector0[j, :],
+                                      unitdipVectorp[j, :]))
         valOH = valOH / nvecs
-        valHH = valHH /  nvecs
+        valHH = valHH / nvecs
         valdip = valdip / nvecs
         return (valOH, valHH, valdip)
 
-
-    def _getMeanOnePoint(self,universe,selection1,selection_str,dt,totalFrames):
+    def _getMeanOnePoint(self, universe, selection1, selection_str, dt,
+                         totalFrames):
         """
         This function get one point of the graphic C_OH vs t. It uses the
         _getOneDeltaPoint() function to calculate the average.
@@ -693,7 +710,7 @@ class WaterOrientationalRelaxation(object):
         if selection1 is None:
             repInd = None
         else:
-            repInd = self._repeatedIndex(selection1,dt,totalFrames)
+            repInd = self._repeatedIndex(selection1, dt, totalFrames)
 
         sumsdt = 0
         n = 0
@@ -706,17 +723,17 @@ class WaterOrientationalRelaxation(object):
             # division by zero in the next line. The except clause avoid
             # the use of the result of _getOneDeltaPoint() on the mean.
             try:
-                a = self._getOneDeltaPoint(universe,repInd,n,sumsdt,dt)
+                a = self._getOneDeltaPoint(universe, repInd, n, sumsdt, dt)
             except ZeroDivisionError:
                 continue
             sumDeltaOH += a[0]
             sumDeltaHH += a[1]
             sumDeltadip += a[2]
-            sumsdt +=  dt
+            sumsdt += dt
             n += 1
-        return (sumDeltaOH/n,sumDeltaHH/n,sumDeltadip/n)
+        return (sumDeltaOH/n, sumDeltaHH/n, sumDeltadip/n)
 
-    def _sameMolecTandDT(self,selection,t0d,tf):
+    def _sameMolecTandDT(self, selection, t0d, tf):
         """
         Compare the molecules in the t0d selection and the t0d+dt
         selection and select only the particles that are repeated in both
@@ -729,7 +746,7 @@ class WaterOrientationalRelaxation(object):
         sort = sorted(list(a.intersection(b)))
         return sort
 
-    def _selection_serial(self,universe,selection_str):
+    def _selection_serial(self, universe, selection_str):
         selection = []
         for ts in universe.trajectory:
             selection.append(universe.select_atoms(selection_str))
@@ -737,9 +754,10 @@ class WaterOrientationalRelaxation(object):
         return selection
 
     # Second Legendre polynomial
-    lg2 = lambda self,x : (3*x*x - 1)/2
+    def lg2(self, x):
+        return (3*x*x - 1.0)/2
 
-    def run(self,**kwargs):
+    def run(self, **kwargs):
         """
         Analyze trajectory and produce timeseries
         """
@@ -747,14 +765,14 @@ class WaterOrientationalRelaxation(object):
         if self.prefetch:
             # All the selection to an array, this way is sometimes faster
             # than selecting later. The array must fit to RAM.
-            if self.nproc==1:
+            if self.nproc == 1:
                 selection_out = self._selection_serial(self.universe,
                                                        self.selection)
             else:
-                #selection_out = self._selection_parallel(self.universe,
+                # selection_out = self._selection_parallel(self.universe,
                 #                                         self.selection,
                 #                                         self.nproc)
-                #parallel selection to be implemented
+                # parallel selection to be implemented
                 selection_out = self._selection_serial(self.universe,
                                                        self.selection)
         else:
@@ -762,8 +780,8 @@ class WaterOrientationalRelaxation(object):
         self.timeseries = []
         for dt in range(self.dtmin, self.dtmax + 1):
             print("Processing dt = ", dt)
-            output = self._getMeanOnePoint(self.universe,selection_out,
-                                           self.selection,dt,self.tf)
+            output = self._getMeanOnePoint(self.universe, selection_out,
+                                           self.selection, dt, self.tf)
             self.timeseries.append(output)
 
 
