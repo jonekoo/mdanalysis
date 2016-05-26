@@ -40,19 +40,19 @@ class TestWaterdynamics(TestCase):
     def test_WaterOrientationalRelaxation(self):
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(self.universe, self.selection1, 0, 5, 2)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2],5), 0.35887)
+        assert_equal(round(wor.timeseries[1][2],5), 0.45902)
 
     def test_WaterOrientationalRelaxation_dtmin(self):
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, dtmin=2)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[0][2],5), 0.35887)
+        assert_equal(round(wor.timeseries[0][2],5), 0.45902)
 
     def test_WaterOrientationalRelaxation_prefetch(self):
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, prefetch=False)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2],5), 0.35887)
+        assert_equal(round(wor.timeseries[1][2],5), 0.45902) 
 
     def test_AngularDistribution(self):
         ad = MDAnalysis.analysis.waterdynamics.AngularDistribution(self.universe,self.selection1,40)

@@ -696,28 +696,22 @@ class WaterOrientationalRelaxation(object):
             repInd = self._repeatedIndex(selection1,dt,totalFrames)
 
         sumsdt = 0
-        n = 0.0
+        n = 0
         sumDeltaOH = 0.0
         sumDeltaHH = 0.0
         sumDeltadip = 0.0
-        valOHList = []
-        valHHList = []
-        valdipList = []
 
-        for j in range(totalFrames/dt-1):
+        while sumsdt+dt < totalFrames:
             # If the selection of atoms is too small, there will be a
             # division by zero in the next line. The except clause avoid
             # the use of the result of _getOneDeltaPoint() on the mean.
             try:
-                a = self._getOneDeltaPoint(universe,repInd,j,sumsdt,dt)
+                a = self._getOneDeltaPoint(universe,repInd,n,sumsdt,dt)
             except ZeroDivisionError:
                 continue
             sumDeltaOH += a[0]
             sumDeltaHH += a[1]
             sumDeltadip += a[2]
-            valOHList.append(a[0])
-            valHHList.append(a[1])
-            valdipList.append(a[2])
             sumsdt +=  dt
             n += 1
         return (sumDeltaOH/n,sumDeltaHH/n,sumDeltadip/n)
