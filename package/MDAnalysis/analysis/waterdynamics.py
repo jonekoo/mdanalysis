@@ -616,7 +616,7 @@ class WaterOrientationalRelaxation(object):
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
-                 prefetch=True):
+                 prefetch=True, bulk=False):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
@@ -626,6 +626,8 @@ class WaterOrientationalRelaxation(object):
         self.nproc = nproc
         self.prefetch = prefetch
         self.timeseries = None
+        self.bulk = bulk
+        self.correlate = self.correlatefft
 
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
@@ -655,14 +657,12 @@ class WaterOrientationalRelaxation(object):
         valOH = 0
         valHH = 0
         valdip = 0
-        
+
         if repInd is None:
             universe.trajectory[t0+dt]
             selectionp = universe.select_atoms(self.selection)
             universe.trajectory[t0]
-            selection0 = universe.select_atoms(self.selection)
-            repInd2 = list(set(selectionp).intersection(set(selection0)))
-            repInd2.sort()
+            repInd2 = universe.select_atoms(self.selection, group=selectionp)
         else:
             universe.trajectory[t0]
             repInd2 = repInd[i]
@@ -782,14 +782,11 @@ class WaterOrientationalRelaxation(object):
         selection after the dt time has elapsed. The result is a list with
         the indexs of the atoms.
         """
-        a = set(selection[t0d])
-        b = set(selection[tf])
-        sort = sorted(list(a.intersection(b)))
-        return sort
+        return selection[t0d].select_atoms(self.selection, group=selection[tf])
 
     def _selection_serial(self, universe, selection_str):
         selection = []
-        for ts in universe.trajectory:
+        for ts in universe.trajectory[self.t0:self.tf]:
             selection.append(universe.select_atoms(selection_str))
             print(ts.frame)
         return selection
@@ -798,11 +795,128 @@ class WaterOrientationalRelaxation(object):
     def lg2(self, x):
         return (3*x*x - 1.0)/2
 
+    def run_bulk(self, **kwargs):
+        """
+        Analyze trajectory in the case the atoms in the selection do not
+        change over the trajectory. This means we can optimize a lot by
+        ignoring checking for atoms that match in timestep t and t+dt.
+        We can also cache all orientation vectors from t0 to tf.
+        """
+        group = self.universe.select_atoms(self.selection)
+
+        self.OHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::3]
+            H1s = ps[1::3]
+            # Compute unit vectors of orientation for the OH bonds
+            OHs = H1s-Os
+            OHnorm = np.linalg.norm(OHs, axis=1)
+            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
+            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
+            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
+
+        C2_OH = self.correlate(self.OHs)
+        del self.OHs
+
+        self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            H1s = ps[1::3]
+            H2s = ps[2::3]
+
+            # Compute unit vectors of orientation for the HH bonds.
+            HHs = H1s-H2s
+            HHnorm = np.linalg.norm(HHs, axis=1)
+            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
+            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
+            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
+
+        C2_HH = self.correlate(self.HHs)
+        del self.HHs
+
+        self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::3]
+            H1s = ps[1::3]
+            H2s = ps[2::3]
+
+            # Compute unit vectors of orientation for the dipole vectors.
+            dips = (H1s+H2s)*0.5 - Os
+            dipnorm = np.linalg.norm(dips, axis=1)
+            self.dips[:, 0, i] = dips[:, 0] / dipnorm
+            self.dips[:, 1, i] = dips[:, 1] / dipnorm
+            self.dips[:, 2, i] = dips[:, 2] / dipnorm
+
+        C2_dip = self.correlate(self.dips)
+        del self.dips
+
+        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
+        self.timeseries[:, 0] = C2_OH
+        self.timeseries[:, 1] = C2_HH
+        self.timeseries[:, 2] = C2_dip
+
+    def correlatebrute(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                for j in range(3):
+                    C2 += np.correlate(u[ibond, i, :] *
+                                       u[ibond, j, :],
+                                       u[ibond, i, :] *
+                                       u[ibond, j, :], 'full')
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def correlatesix(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                C2 += np.correlate(u[ibond, i, :]**2, u[ibond, i, :]**2,
+                                   'full')
+            C2 += 2 * (np.correlate(u[ibond, 0, :] * u[ibond, 1, :],
+                                    u[ibond, 0, :] * u[ibond, 1, :], 'full') +
+                       np.correlate(u[ibond, 0, :] * u[ibond, 2, :],
+                                    u[ibond, 0, :] * u[ibond, 2, :], 'full') +
+                       np.correlate(u[ibond, 1, :] * u[ibond, 2, :],
+                                    u[ibond, 1, :] * u[ibond, 2, :], 'full'))
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def acf_fft(self, d):
+        N = len(d)
+        fvi = np.fft.fft(d, n=2*N)
+        acf = fvi * np.conjugate(fvi)
+        acf = np.fft.ifft(acf)
+        return np.real(acf[:N])
+
+    def correlatefft(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                C2 += self.acf_fft(u[ibond, i, :]**2)
+            C2 += 2 * (self.acf_fft(u[ibond, 0, :] * u[ibond, 1, :]) +
+                       self.acf_fft(u[ibond, 0, :] * u[ibond, 2, :]) +
+                       self.acf_fft(u[ibond, 1, :] * u[ibond, 2, :]))
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
     def run(self, **kwargs):
         """
         Analyze trajectory and produce timeseries
         """
-        
+        if self.bulk:
+            self.run_bulk()
+            return
         if self.prefetch:
             # All the selection to an array, this way is sometimes faster
             # than selecting later. The array must fit to RAM.

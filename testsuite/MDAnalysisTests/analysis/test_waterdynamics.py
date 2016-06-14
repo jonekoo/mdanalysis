@@ -18,7 +18,6 @@ import MDAnalysis
 import MDAnalysis.analysis.waterdynamics
 
 from numpy.testing import TestCase, assert_equal, dec
-import numpy as np
 
 from MDAnalysisTests.datafiles import waterPSF, waterDCD
 from MDAnalysisTests import parser_not_found
@@ -33,38 +32,43 @@ class TestWaterdynamics(TestCase):
         self.selection2 = self.selection1
 
     def test_HydrogenBondLifetimes(self):
-        hbl = MDAnalysis.analysis.waterdynamics.HydrogenBondLifetimes(self.universe, self.selection1, self.selection2, 0, 5, 3)
+        hbl = MDAnalysis.analysis.waterdynamics.HydrogenBondLifetimes(
+            self.universe, self.selection1, self.selection2, 0, 5, 3)
         hbl.run(quiet=True)
-        assert_equal(round(hbl.timeseries[2][1],5), 0.75)
+        assert_equal(round(hbl.timeseries[2][1], 5), 0.75)
 
     def test_WaterOrientationalRelaxation(self):
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(self.universe, self.selection1, 0, 5, 2)
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            self.universe, self.selection1, 0, 5, 2)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2],5), 0.45902)
+        assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
 
     def test_WaterOrientationalRelaxation_dtmin(self):
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, dtmin=2)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[0][2],5), 0.45902)
+        assert_equal(round(wor.timeseries[0][2], 5), 0.45902)
 
     def test_WaterOrientationalRelaxation_prefetch(self):
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, prefetch=False)
         wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2],5), 0.45902) 
+        assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
 
     def test_AngularDistribution(self):
-        ad = MDAnalysis.analysis.waterdynamics.AngularDistribution(self.universe,self.selection1,40)
+        ad = MDAnalysis.analysis.waterdynamics.AngularDistribution(
+            self.universe, self.selection1, 40)
         ad.run(quiet=True)
-        assert_equal(str(ad.graph[0][39]), str("0.951172947884 0.48313682125") )
+        assert_equal(str(ad.graph[0][39]), str("0.951172947884 0.48313682125"))
 
     def test_MeanSquareDisplacement(self):
-        msd = MDAnalysis.analysis.waterdynamics.MeanSquareDisplacement(self.universe, self.selection1, 0, 10, 2)
+        msd = MDAnalysis.analysis.waterdynamics.MeanSquareDisplacement(
+            self.universe, self.selection1, 0, 10, 2)
         msd.run(quiet=True)
-        assert_equal(round(msd.timeseries[1],5), 0.03984)
+        assert_equal(round(msd.timeseries[1], 5), 0.03984)
 
     def test_SurvivalProbability(self):
-        sp = MDAnalysis.analysis.waterdynamics.SurvivalProbability(self.universe, self.selection1, 0, 6, 3)
+        sp = MDAnalysis.analysis.waterdynamics.SurvivalProbability(
+            self.universe, self.selection1, 0, 6, 3)
         sp.run(quiet=True)
-        assert_equal(round(sp.timeseries[1],5), 1.0)
+        assert_equal(round(sp.timeseries[1], 5), 1.0)
