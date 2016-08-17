@@ -897,6 +897,922 @@ class WaterOrientationalRelaxation(object):
         acf = np.fft.ifft(acf)
         return np.real(acf[:N])
 
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
+
+"""
+Water dynamics analysis --- :mod:`MDAnalysis.analysis.waterdynamics`
+=======================================================================
+
+:Author: Alejandro Bernardin
+:Year: 2014-2015
+:Copyright: GNU Public License v3
+
+.. versionadded:: 0.11.0
+
+This module provides functions to analize water dynamics trajectories and
+water interactions with other molecules. The functions in this module are:
+water orientational relaxation (WOR) [Yeh1999]_, hydrogen bond lifetimes
+(HBL) [Rapaport1983]_, angular distribution (AD) [Grigera1995]_, mean
+square displacement (MSD) [Brodka1994]_ and survival probability (SP)
+[Liu2004]_.
+
+For more information about this type of analysis please refer to
+[Araya-Secchi2014]_ (water in a protein cavity) and [Milischuk2011]_
+(water in a nanopore).
+
+.. rubric:: References
+
+.. [Rapaport1983] D.C. Rapaport (1983): Hydrogen bonds in water, Molecular
+                  Physics: An International Journal at the Interface
+                  Between Chemistry and Physics, 50:5, 1151-1162.
+
+.. [Yeh1999] Yu-ling Yeh and Chung-Yuan Mou (1999).
+             Orientational Relaxation Dynamics of Liquid Water Studied by
+             Molecular Dynamics Simulation, J. Phys. Chem. B 1999, 103,
+             3699-3705.
+
+.. [Grigera1995] Raul Grigera, Susana G. Kalko and Jorge Fischbarg (1995).
+                 Wall-Water Interface. A Molecular Dynamics Study,
+                 Langmuir 1996,12,154-158
+
+.. [Liu2004] Pu Liu, Edward Harder, and B. J. Berne (2004).
+             On the Calculation of Diffusion Coefficients in Confined
+             Fluids and Interfaces with an Application to the Liquid-Vapor
+             Interface of Water, J. Phys. Chem. B 2004, 108, 6595-6602.
+
+.. [Brodka1994] Aleksander Brodka (1994).
+                Diffusion in restricted volume, Molecular Physics, 1994,
+                Vol. 82, No. 5, 1075-1078.
+
+.. [Araya-Secchi2014] Araya-Secchi, R., Tomas Perez-Acle, Seung-gu Kang,
+                      Tien Huynh, Alejandro Bernardin, Yerko Escalona,
+                      Jose-Antonio Garate, Agustin D. Martinez, Isaac E.
+                      Garcia, Juan C. Saez, Ruhong Zhou (2014).
+                      Characterization of a novel water pocket inside the
+                      human Cx26 hemichannel structure.
+                      Biophysical journal, 107(3), 599-612.
+
+.. [Milischuk2011] Anatoli A. Milischuk and Branka M. Ladanyi.
+                   Structure and dynamics of water confined in silica
+                   nanopores. J. Chem. Phys. 135, 174709 (2011);
+                   doi: 10.1063/1.3657408
+
+
+
+.. examples
+
+Examples
+--------
+
+HydrogenBondLifetimes
+~~~~~~~~~~~~~~~~~~~~~
+
+Analyzing hydrogen bond lifetimes (HBL) :class:`HydrogenBondLifetimes`,
+both continuos and intermittent. In this case we are analyzing how residue
+38 interact with a water sphere of radius 6.0 centered on the geometric
+center of protein and residue 42. If the hydrogen bond lifetimes are very
+stable, we can assume that residue 38 is hydrophilic, on the other hand,
+if the  are very unstable, we can assume that residue 38 is hydrophobic::
+
+  import MDAnalysis
+  from MDAnalysis.analysis.waterdynamics import HydrogenBondLifetimes as HBL
+
+  u = MDAnalysis.Universe(pdb, trajectory)
+  selection1 = "byres name OH2 and sphzone 6.0 protein and resid 42"
+  selection2 = "resid 38"
+  HBL_analysis = HBL(universe, selection1, selection2, 0, 2000, 30)
+  HBL_analysis.run()
+  i=0
+  # now we print the data ready to graph. The first two columns are the
+  # HBLc vs t graph and the second two columns are the HBLi vs t graph
+  for HBLc, HBLi in HBL_analysis.timeseries:
+        print(i +" "+ HBLc +" "+ i +" "+ HBLi)
+        i+=1
+
+where HBLc is the value for the continuos hydrogen bond lifetimes and HBLi
+is the value for the intermittent hydrogen bond lifetime, t0 = 0,
+tf = 2000 and dtmax = 30. In this way we create 30 windows timestep
+(30 values in x axis). The continuos hydrogen bond lifetimes should decay
+faster than intermittent.
+
+
+WaterOrientationalRelaxation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Analyzing water orientational relaxation (WOR)
+:class:`WaterOrientationalRelaxation`. In this case we are analyzing "how
+fast" water molecules are rotating/changing direction. If WOR is very
+stable we can assume that water molecules are rotating/changing direction
+very slow, on the other hand, if WOR decay very fast, we can assume that
+water molecules are rotating/changing direction very fast::
+
+  import MDAnalysis
+  from MDAnalysis.analysis.waterdynamics \
+       import WaterOrientationalRelaxation as WOR
+
+  u = MDAnalysis.Universe(pdb, trajectory)
+  selection = "byres name OH2 and sphzone 6.0 protein and resid 42"
+  WOR_analysis = WOR(universe, selection, 0, 1000, 20)
+  WOR_analysis.run()
+  i=0
+  # now we print the data ready to graph. The first two columns are WOR_OH
+  # vs t graph, the second two columns are WOR_HH vs t graph and the third
+  # two columns are WOR_dip vs t graph
+  for WOR_OH, WOR_HH, WOR_dip in WOR_analysis.timeseries:
+        print(i +" "+ WOR_OH +" "+ i +" "+ WOR_HH +" "+ i +" "+ WOR_dip)
+
+where t0 = 0, tf = 1000 and dtmax = 20. In this way we create 20 windows
+timesteps (20 values in the x axis), the first window is created with 1000
+timestep average (1000/1), the second window is created with 500 timestep
+average(1000/2), the third window is created with 333 timestep average
+(1000/3) and so on.
+
+AngularDistribution
+~~~~~~~~~~~~~~~~~~~
+
+Analyzing angular distribution (AD) :class:`AngularDistribution` for OH
+vector, HH vector and dipole vector. It returns a line histogram with
+vector orientation preference. A straight line in the output graphic means
+no preferential orientation in water molecules. In this case we are
+analyzing if water molecules have some orientational preference, in this
+way we can see if water molecules are under an electric field or if they
+are interacting with something (residue, protein, etc)::
+
+  import MDAnalysis
+  from MDAnalysis.analysis.waterdynamics import AngularDistribution as AD
+
+  u = MDAnalysis.Universe(pdb, trajectory)
+  selection = "byres name OH2 and sphzone 6.0 " + \
+              "(protein and (resid 42 or resid 26) )"
+  bins = 30
+  AD_analysis = AD(universe,selection,bins)
+  AD_analysis.run()
+  # now we print data ready to graph. The first two columns are
+  # P(cos(theta)) vs cos(theta) for OH vector, the seconds two columns are
+  # P(cos(theta)) vs cos(theta) for HH vector and thirds two columns are
+  # P(cos(theta)) vs cos(theta) for dipole vector
+  for i in range(bins):
+        print(AD_analysis.graph[0][i] +" "+ AD_analysis.graph[1][i] + \
+              " "+ AD_analysis.graph[2][i])
+
+where P(cos(theta)) is the angular distribution or angular probabilities.
+
+MeanSquareDisplacement
+~~~~~~~~~~~~~~~~~~~~~~
+Analyzing mean square displacement (MSD):class:`MeanSquareDisplacement`
+for water molecules. In this case we are analyzing the average distance
+that water molecules travels inside protein in XYZ direction (cylindric
+zone of radius 11[nm], Zmax 4.0[nm] and Zmin -8.0[nm]). A strong rise
+mean a fast movement of water molecules, a weak rise mean slow movement of
+particles::
+
+  import MDAnalysis
+  from MDAnalysis.analysis.waterdynamics import MeanSquareDisplacement as MSD
+
+  u = MDAnalysis.Universe(pdb, trajectory)
+  selection = "byres name OH2 and cyzone 11.0 4.0 -8.0 protein"
+  MSD_analysis = MSD(universe, selection, 0, 1000, 20)
+  MSD_analysis.run()
+  #now we print data ready to graph. The graph
+  #represents MSD vs t
+  i=0
+  for msd in MSD_analysis.timeseries:
+        print(i +" "+ msd)
+        i += 1
+
+
+SurvivalProbability
+~~~~~~~~~~~~~~~~~~~
+Analyzing survival probability (SP) :class:`SurvivalProbability` for water
+molecules. In this case we are analyzing how long water molecules remain
+in a sphere of radius 12.3 centered in the geometrical center of resid 42,
+26, 34 and 80. A slow decay of SP means a long permanence time of water
+molecules in the zone, on the other hand, a fast decay means a short
+permanence time::
+
+  import MDAnalysis
+  from MDAnalysis.analysis.waterdynamics import SurvivalProbability as SP
+
+  u = MDAnalysis.Universe(pdb, trajectory)
+  selection = "byres name OH2 and sphzone 12.3 " + \
+              "(resid 42 or resid 26 or resid 34 or resid 80) "
+  SP_analysis = SP(universe, selection, 0, 100, 20)
+  SP_analysis.run()
+  # now we print data ready to graph. The graph
+  # represents SP vs t
+  i = 0
+  for sp in SP_analysis.timeseries:
+        print(i +" "+ sp)
+        i += 1
+
+.. Output
+
+Output
+------
+
+HydrogenBondLifetimes
+~~~~~~~~~~~~~~~~~~~~~
+Hydrogen bond lifetimes (HBL) data is returned per window timestep, which
+is stored in :attr:`HydrogenBondLifetimes.timeseries` (in all the
+following descriptions, # indicates comments that are not part of the
+output)::
+
+    results = [
+        [ # time t0
+            <HBL_c>, <HBL_i>
+        ],
+        [ # time t1
+            <HBL_c>, <HBL_i>
+        ],
+        ...
+     ]
+
+WaterOrientationalRelaxation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Water orientational relaxation (WOR) data is returned per window timestep,
+which is stored in :attr:`WaterOrientationalRelaxation.timeseries`::
+
+    results = [
+        [ # time t0
+            <WOR_OH>, <WOR_HH>, <WOR_dip>
+        ],
+        [ # time t1
+            <WOR_OH>, <WOR_HH>, <WOR_dip>
+        ],
+        ...
+     ]
+
+AngularDistribution
+~~~~~~~~~~~~~~~~~~~
+Angular distribution (AD) data is returned per vector, which is stored in
+:attr:`AngularDistribution.graph`. In fact, AngularDistribution returns a
+histogram::
+
+    results = [
+        [ # OH vector values
+          # the values are order in this way: <x_axis  y_axis>
+            <cos_theta0 ang_distr0>, <cos_theta1 ang_distr1>, ...
+        ],
+        [ # HH vector values
+            <cos_theta0 ang_distr0>, <cos_theta1 ang_distr1>, ...
+        ],
+        [ # dip vector values
+           <cos_theta0 ang_distr0>, <cos_theta1 ang_distr1>, ...
+        ],
+     ]
+
+MeanSquareDisplacement
+~~~~~~~~~~~~~~~~~~~~~~
+Mean Square Displacement (MSD) data is returned in a list, which each
+element represents a MSD value in its respective window timestep. Data is
+stored in :attr:`MeanSquareDisplacement.timeseries`::
+
+    results = [
+         #MSD values orders by window timestep
+            <MSD_t0>, <MSD_t1>, ...
+     ]
+
+SurvivalProbability
+~~~~~~~~~~~~~~~~~~~
+Survival Probability (SP) data is returned in a list, which each element
+represents a SP value in its respective window timestep. Data is stored in
+:attr:`SurvivalProbability.timeseries`::
+
+    results = [
+         # SP values order by window timestep
+            <SP_t0>, <SP_t1>, ...
+     ]
+
+
+
+Classes
+--------
+
+.. autoclass:: HydrogenBondLifetimes
+   :members:
+   :inherited-members:
+
+.. autoclass:: WaterOrientationalRelaxation
+   :members:
+   :inherited-members:
+
+.. autoclass:: AngularDistribution
+   :members:
+   :inherited-members:
+
+.. autoclass:: MeanSquareDisplacement
+   :members:
+   :inherited-members:
+
+.. autoclass:: SurvivalProbability
+   :members:
+   :inherited-members:
+
+
+"""
+from six.moves import range, zip_longest
+
+import numpy as np
+import multiprocessing
+import sys
+
+import MDAnalysis.analysis.hbonds
+
+
+class HydrogenBondLifetimes(object):
+    r"""
+    This is a autocorrelation function that gives the "Hydrogen Bond
+    Lifetimes" (HBL) proposed by D.C. Rapaport [Rapaport1983]_. From this
+    function we can obtain the continuos and intermittent behavior of
+    hydrogen bonds in time. A fast decay in these parameters indicate a
+    fast change in HBs connectivity. A slow decay indicates very stable
+    hydrogen bonds, like in ice. The HBL is also know as "Hydrogen Bond
+    Population Relaxation" (HBPR). In the continuos case we have:
+
+    .. math::
+       C_{HB}^c(\tau) = \frac{\sum_{ij}h_{ij}(t_0)h'_{ij}(t_0+\tau)}{\sum_{ij}h_{ij}(t_0)}
+
+    where :math:`h'_{ij}(t_0+\tau)=1` if there is a H-bond between a pair
+    :math:`ij` during time interval :math:`t_0+\tau` (continuos) and
+    :math:`h'_{ij}(t_0+\tau)=0` otherwise. In the intermittent case we
+    have:
+
+    .. math::
+       C_{HB}^i(\tau) = \frac{\sum_{ij}h_{ij}(t_0)h_{ij}(t_0+\tau)}{\sum_{ij}h_{ij}(t_0)}
+
+    where :math:`h_{ij}(t_0+\tau)=1` if there is a H-bond between a pair
+    :math:`ij` at time :math:`t_0+\tau` (intermittent) and
+    :math:`h_{ij}(t_0+\tau)=0` otherwise.
+
+    .. versionadded:: 0.11.0
+
+    :Arguments:
+     *universe*
+       Universe object
+     *selection1*
+       Selection string for first selection [‘byres name OH2’]
+       It could be any selection available in MDAnalysis, not just water.
+     *selection2*
+       Selection string to analize its HBL against selection1
+     *t0*
+       Time where analysis begin
+     *tf*
+       Time where analysis end
+     *dtmax*
+       Maximum dt size, dtmax < tf or it will crash.
+     *nproc*
+       Number of processors to use, by default is 1.
+
+    """
+    def __init__(self, universe, selection1, selection2, t0, tf, dtmax,
+                 nproc=1):
+        self.universe = universe
+        self.selection1 = selection1
+        self.selection2 = selection2
+        self.t0 = t0
+        self.tf = tf - 1
+        self.dtmax = dtmax
+        self.nproc = nproc
+        self.timeseries = None
+
+    def _getC_i(self, HBP, t0, t):
+        """
+        This function give the intermitent Hydrogen Bond Lifetime
+        C_i = <h(t0)h(t)>/<h(t0)> between t0 and t
+        """
+        C_i = 0
+        for i in range(len(HBP[t0])):
+            for j in range(len(HBP[t])):
+                if HBP[t0][i][0] == HBP[t][j][0] and \
+                   HBP[t0][i][1] == HBP[t][j][1]:
+                    C_i += 1
+                    break
+        if len(HBP[t0]) == 0:
+            return 0.0
+        else:
+            return float(C_i)/len(HBP[t0])
+
+    def _getC_c(self, HBP, t0, t):
+        """
+        This function give the continous Hydrogen Bond Lifetime
+        C_c = <h(t0)h'(t)>/<h(t0)> between t0 and t
+        """
+        C_c = 0
+        dt = 1
+        begt0 = t0
+        HBP_cp = HBP
+        HBP_t0 = HBP[t0]
+        newHBP = []
+        if t0 == t:
+            return 1.0
+        while t0+dt <= t:
+            for i in range(len(HBP_t0)):
+                for j in range(len(HBP_cp[t0+dt])):
+                    if HBP_t0[i][0] == HBP_cp[t0+dt][j][0] and \
+                       HBP_t0[i][1] == HBP_cp[t0+dt][j][1]:
+                        newHBP.append(HBP_t0[i])
+                        break
+            C_c = len(newHBP)
+            t0 += dt
+            HBP_t0 = newHBP
+            newHBP = []
+        if len(HBP[begt0]) == 0:
+            return 0
+        else:
+            return C_c/float(len(HBP[begt0]))
+
+    def _intervC_c(self, HBP, t0, tf, dt):
+        """
+        This function gets all the data for the h(t0)h(t0+dt)', where
+        t0 = 1,2,3,...,tf. This function give us one point of the final graphic
+        HBL vs t
+        """
+        a = 0
+        count = 0
+        for i in range(len(HBP)):
+            if (t0+dt <= tf):
+                if t0 == t0+dt:
+                    b = self._getC_c(HBP, t0, t0)
+                    break
+                b = self._getC_c(HBP, t0, t0+dt)
+                t0 += dt
+                a += b
+                count += 1
+        if count == 0:
+            return 1.0
+        return a/count
+
+    def _intervC_i(self, HBP, t0, tf, dt):
+        """
+        This function gets all the data for the h(t0)h(t0+dt), where
+        t0 = 1,2,3,...,tf. This function give us a point of the final graphic
+        HBL vs t
+        """
+        a = 0
+        count = 0
+        for i in range(len(HBP)):
+            if t0+dt <= tf:
+                b = self._getC_i(HBP, t0, t0+dt)
+                t0 += dt
+                a += b
+                count += 1
+        return a/count
+
+    def _finalGraphGetC_i(self, HBP, t0, tf, maxdt):
+        """
+        This function gets the final data of the C_i graph.
+        """
+        output = []
+        for dt in range(maxdt):
+            a = self._intervC_i(HBP, t0, tf, dt)
+            output.append(a)
+        return output
+
+    def _finalGraphGetC_c(self, HBP, t0, tf, maxdt):
+        """
+        This function gets the final data of the C_c graph.
+        """
+        output = []
+        for dt in range(maxdt):
+            a = self._intervC_c(HBP, t0, tf, dt)
+            output.append(a)
+        return output
+
+    def _getGraphics(self, HBP, t0, tf, maxdt):
+        """
+        Function that join all the results into a graphics.
+        """
+        a = []
+        cont = self._finalGraphGetC_c(HBP, t0, tf, maxdt)
+        inte = self._finalGraphGetC_i(HBP, t0, tf, maxdt)
+        for i in range(len(cont)):
+            fix = [cont[i], inte[i]]
+            a.append(fix)
+        return a
+
+    def _HBA(self, ts, conn, universe, selAtom1, selAtom2, quiet=True):
+        """
+        Main function for calculate C_i and C_c in parallel.
+        """
+        finalGetResidue1 = selAtom1
+        finalGetResidue2 = selAtom2
+        frame = ts.frame
+        h = MDAnalysis.analysis.hbonds.HydrogenBondAnalysis(
+            universe, finalGetResidue1, finalGetResidue2, distance=3.5,
+            angle=120.0, start=frame-1, stop=frame)
+        while True:
+            try:
+                h.run(quiet=quiet)
+                break
+            except:
+                print("error")
+                print("trying again")
+                sys.stdout.flush()
+        sys.stdout.flush()
+        conn.send(h.timeseries[0])
+        conn.close()
+
+    def run(self, **kwargs):
+        """
+        Analyze trajectory and produce timeseries
+        """
+        h_list = []
+        i = 0
+        if (self.nproc > 1):
+                while i < len(self.universe.trajectory):
+                    jobs = []
+                    k = i
+                    for j in range(self.nproc):
+                        # start
+                        print("ts=", i+1)
+                        if i >= len(self.universe.trajectory):
+                            break
+                        conn_parent, conn_child = multiprocessing.Pipe(False)
+                        while True:
+                            try:
+                                # new thread
+                                jobs.append(
+                                    (multiprocessing.Process(
+                                        target=self._HBA,
+                                        args=(self.universe.trajectory[i],
+                                              conn_child, self.universe,
+                                              self.selection1,
+                                              self.selection2,)),
+                                     conn_parent))
+                                break
+                            except:
+                                print("error in jobs.append")
+                        jobs[j][0].start()
+                        i = i + 1
+
+                    for j in range(self.nproc):
+                        if k >= len(self.universe.trajectory):
+                            break
+                        rec01 = jobs[j][1]
+                        received = rec01.recv()
+                        h_list.append(received)
+                        jobs[j][0].join()
+                        k += 1
+                self.timeseries = self._getGraphics(h_list, 0, self.tf-1,
+                                                    self.dtmax)
+        else:
+            h_list = MDAnalysis.analysis.hbonds.HydrogenBondAnalysis(
+                self.universe, self.selection1, self.selection2,
+                distance=3.5, angle=120.0)
+            h_list.run(**kwargs)
+            self.timeseries = self._getGraphics(
+                h_list.timeseries, self.t0, self.tf, self.dtmax)
+
+
+class WaterOrientationalRelaxation(object):
+    r"""
+    Function to evaluate the Water Orientational Relaxation proposed by
+    Yu-ling Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation
+    indicates "how fast" water molecules are rotating or changing
+    direction. This is a time correlation function given by:
+
+    .. math::
+        C_{\hat u}(\tau)=\langle \mathit{P}_2[\mathbf{\hat{u}}(t_0)\cdot\mathbf{\hat{u}}(t_0+\tau)]\rangle
+
+    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial
+    and :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
+
+    .. versionadded:: 0.11.0
+
+    :Arguments:
+      *universe*
+         Universe object
+      *selection*
+       Selection string, only models with 3 atoms molecules are allowed
+       (TIP3, TIP3P, etc)
+      *t0*
+       Time where analysis begin
+      *tf*
+       Time where analysis end
+      *dtmax*
+       Maximum dt size window, dtmax < tf or it will crash.
+      *dtmin*
+       Minimum dt size window, 0 < dtmin < dtmax.
+      *prefetch*
+       When True, the selection is fetched into memory from the whole
+       trajectory.
+
+    """
+
+    def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
+                 prefetch=True, bulk=False, single=False):
+        self.universe = universe
+        self.selection = selection
+        self.t0 = t0
+        self.tf = tf
+        self.dtmin = dtmin
+        self.dtmax = dtmax
+        self.nproc = nproc
+        self.prefetch = prefetch
+        self.timeseries = None
+        self.bulk = bulk
+        self.correlate = self.correlatefft
+        if single:
+            self.correlate = self.averagesinglefft
+
+    def _repeatedIndex(self, selection, dt, totalFrames):
+        """
+        Indicate the comparation between all the t+dt.
+        The results is a list of list with all the repeated index per
+        frame (or time).
+        
+        Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
+        Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
+        Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
+        """
+        rep = []
+        for i in range(int(round((totalFrames-1)/float(dt)))):
+            if dt*i+dt < totalFrames:
+                rep.append(self._sameMolecTandDT(selection, dt*i, (dt*i)+dt))
+        return rep
+
+    def _getOneDeltaPoint(self, universe, repInd, i, t0, dt):
+        """
+        Give one point to promediate and get one point of the graphic
+        C_vect vs t.
+
+        Ex: t0=1 and tau=1 so calculate the t0-tau=1-2 intervale.
+        Ex: t0=5 and tau=3 so calcultate the t0-tau=5-8 intervale.
+        i = come from getMeanOnePoint (named j) (int)
+        """
+        valOH = 0
+        valHH = 0
+        valdip = 0
+
+        if repInd is None:
+            universe.trajectory[t0+dt]
+            selectionp = universe.select_atoms(self.selection)
+            universe.trajectory[t0]
+            repInd2 = universe.select_atoms(self.selection, group=selectionp)
+        else:
+            universe.trajectory[t0]
+            repInd2 = repInd[i]
+
+        nvecs = len(repInd2) / 3
+
+        unitOHVector0 = np.zeros((nvecs, 3))
+        unitHHVector0 = np.zeros((nvecs, 3))
+        unitdipVector0 = np.zeros((nvecs, 3))
+
+        for j in range(nvecs):
+            begj = 3*j
+
+            # Compute unit vectors of orientation at t0
+            Ot0 = repInd2[begj]
+            H1t0 = repInd2[begj+1]
+            H2t0 = repInd2[begj+2]
+            OHVector0 = H1t0.position - Ot0.position
+            HHVector0 = H1t0.position - H2t0.position
+            dipVector0 = ((H1t0.position + H2t0.position) * 0.5) - Ot0.position
+
+            normOHVector0 = np.linalg.norm(OHVector0)
+            # This is only around 20% faster than the line above:
+            # normOHVector0 = np.sqrt(OHVector0[0]**2 + OHVector0[1]**2 + \
+            #    OHVector0[2]**2)
+            normHHVector0 = np.linalg.norm(HHVector0)
+            normdipVector0 = np.linalg.norm(dipVector0)
+
+            unitOHVector0[j, :] = [OHVector0[0]/normOHVector0,
+                                   OHVector0[1]/normOHVector0,
+                                   OHVector0[2]/normOHVector0]
+            unitHHVector0[j, :] = [HHVector0[0]/normHHVector0,
+                                   HHVector0[1]/normHHVector0,
+                                   HHVector0[2]/normHHVector0]
+            unitdipVector0[j, :] = [dipVector0[0]/normdipVector0,
+                                    dipVector0[1]/normdipVector0,
+                                    dipVector0[2]/normdipVector0]
+
+        unitOHVectorp = np.zeros((nvecs, 3))
+        unitHHVectorp = np.zeros((nvecs, 3))
+        unitdipVectorp = np.zeros((nvecs, 3))
+        universe.trajectory[t0+dt]
+        for j in range(nvecs):
+            begj = 3 * j
+            # Compute unit vectors of orientation at t0 + dt = tp
+            Otp = repInd2[begj]
+            H1tp = repInd2[begj+1]
+            H2tp = repInd2[begj+2]
+
+            OHVectorp = H1tp.position - Otp.position
+            HHVectorp = H1tp.position - H2tp.position
+            dipVectorp = ((H1tp.position + H2tp.position) * 0.5) - Otp.position
+
+            normOHVectorp = np.linalg.norm(OHVectorp)
+            normHHVectorp = np.linalg.norm(HHVectorp)
+            normdipVectorp = np.linalg.norm(dipVectorp)
+
+            unitOHVectorp[j, :] = [OHVectorp[0]/normOHVectorp,
+                                   OHVectorp[1]/normOHVectorp,
+                                   OHVectorp[2]/normOHVectorp]
+            unitHHVectorp[j, :] = [HHVectorp[0]/normHHVectorp,
+                                   HHVectorp[1]/normHHVectorp,
+                                   HHVectorp[2]/normHHVectorp]
+            unitdipVectorp[j, :] = [dipVectorp[0]/normdipVectorp,
+                                    dipVectorp[1]/normdipVectorp,
+                                    dipVectorp[2]/normdipVectorp]
+
+        for j in range(nvecs):
+            # Compute contributions to the orientational autocorrelations.
+            valOH += self.lg2(np.dot(unitOHVector0[j, :], unitOHVectorp[j, :]))
+            valHH += self.lg2(np.dot(unitHHVector0[j, :], unitHHVectorp[j, :]))
+            valdip += self.lg2(np.dot(unitdipVector0[j, :],
+                                      unitdipVectorp[j, :]))
+        valOH = valOH / nvecs
+        valHH = valHH / nvecs
+        valdip = valdip / nvecs
+        return (valOH, valHH, valdip)
+
+    def _getMeanOnePoint(self, universe, selection1, selection_str, dt,
+                         totalFrames):
+        """
+        This function get one point of the graphic C_OH vs t. It uses the
+        _getOneDeltaPoint() function to calculate the average.
+
+        """
+        if selection1 is None:
+            repInd = None
+        else:
+            repInd = self._repeatedIndex(selection1, dt, totalFrames)
+
+        sumsdt = 0
+        n = 0
+        sumDeltaOH = 0.0
+        sumDeltaHH = 0.0
+        sumDeltadip = 0.0
+
+        while sumsdt+dt < totalFrames:
+            # If the selection of atoms is too small, there will be a
+            # division by zero in the next line. The except clause avoid
+            # the use of the result of _getOneDeltaPoint() on the mean.
+            try:
+                a = self._getOneDeltaPoint(universe, repInd, n, sumsdt, dt)
+            except ZeroDivisionError:
+                continue
+            sumDeltaOH += a[0]
+            sumDeltaHH += a[1]
+            sumDeltadip += a[2]
+            sumsdt += dt
+            n += 1
+        return (sumDeltaOH/n, sumDeltaHH/n, sumDeltadip/n)
+
+    def _sameMolecTandDT(self, selection, t0d, tf):
+        """
+        Compare the molecules in the t0d selection and the t0d+dt
+        selection and select only the particles that are repeated in both
+        frames. This is to consider only the molecules that remains in the
+        selection after the dt time has elapsed. The result is a list with
+        the indexs of the atoms.
+        """
+        return selection[t0d].select_atoms(self.selection, group=selection[tf])
+
+    def _selection_serial(self, universe, selection_str):
+        selection = []
+        for ts in universe.trajectory[self.t0:self.tf]:
+            selection.append(universe.select_atoms(selection_str))
+            print(ts.frame)
+        return selection
+
+    # Second Legendre polynomial
+    def lg2(self, x):
+        return (3*x*x - 1.0)/2
+
+    def run_bulk(self, **kwargs):
+        """
+        Analyze trajectory in the case the atoms in the selection do not
+        change over the trajectory. This means we can optimize a lot by
+        ignoring checking for atoms that match in timestep t and t+dt.
+        We can also cache all orientation vectors from t0 to tf.
+        """
+        group = self.universe.select_atoms(self.selection)
+
+        self.OHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::3]
+            H1s = ps[1::3]
+            # Compute unit vectors of orientation for the OH bonds
+            OHs = H1s-Os
+            OHnorm = np.linalg.norm(OHs, axis=1)
+            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
+            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
+            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
+
+        C2_OH = self.correlate(self.OHs)
+        del self.OHs
+
+        self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            H1s = ps[1::3]
+            H2s = ps[2::3]
+
+            # Compute unit vectors of orientation for the HH bonds.
+            HHs = H1s-H2s
+            HHnorm = np.linalg.norm(HHs, axis=1)
+            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
+            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
+            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
+
+        C2_HH = self.correlate(self.HHs)
+        #self.C2s = []
+        #self.averagesinglefft(self.HHs)
+        #self.storesingleffts(self.HHs)
+        del self.HHs
+
+        self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::3]
+            H1s = ps[1::3]
+            H2s = ps[2::3]
+
+            # Compute unit vectors of orientation for the dipole vectors.
+            dips = (H1s+H2s)*0.5 - Os
+            dipnorm = np.linalg.norm(dips, axis=1)
+            self.dips[:, 0, i] = dips[:, 0] / dipnorm
+            self.dips[:, 1, i] = dips[:, 1] / dipnorm
+            self.dips[:, 2, i] = dips[:, 2] / dipnorm
+
+        C2_dip = self.correlate(self.dips)
+        del self.dips
+
+        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
+        self.timeseries[:, 0] = C2_OH
+        self.timeseries[:, 1] = C2_HH
+        self.timeseries[:, 2] = C2_dip
+
+    def correlatebrute(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                for j in range(3):
+                    C2 += np.correlate(u[ibond, i, :] *
+                                       u[ibond, j, :],
+                                       u[ibond, i, :] *
+                                       u[ibond, j, :], 'full')
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def correlatesix(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                C2 += np.correlate(u[ibond, i, :]**2, u[ibond, i, :]**2,
+                                   'full')
+            C2 += 2 * (np.correlate(u[ibond, 0, :] * u[ibond, 1, :],
+                                    u[ibond, 0, :] * u[ibond, 1, :], 'full') +
+                       np.correlate(u[ibond, 0, :] * u[ibond, 2, :],
+                                    u[ibond, 0, :] * u[ibond, 2, :], 'full') +
+                       np.correlate(u[ibond, 1, :] * u[ibond, 2, :],
+                                    u[ibond, 1, :] * u[ibond, 2, :], 'full'))
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def acf_fft(self, d):
+        N = len(d)
+        fvi = np.fft.fft(d, n=2*N)
+        acf = fvi * np.conjugate(fvi)
+        acf = np.fft.ifft(acf)
+        return np.real(acf[:N])
+
+    def averagesinglefft(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            C2 += self.correlatesinglefft(u[ibond, :, :])
+        C2 /= u[:, 0, 0].size
+        return C2
+
+    def storesingleffts(self, u):
+        for ibond in range(u[:, 0, 0].size):
+            self.C2s.append(self.correlatesinglefft(u[ibond, :, :]))
+        
+    # arr is 3 x nframes
+    def correlatesinglefft(self, arr):
+        C2 = 0.0
+        for i in range(3):
+            C2 += self.acf_fft(arr[i, :]**2)
+        C2 += 2 * (self.acf_fft(arr[0, :] * arr[1, :]) +
+                   self.acf_fft(arr[0, :] * arr[2, :]) +
+                   self.acf_fft(arr[1, :] * arr[2, :]))
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
     def correlatefft(self, u):
         C2 = 0.0
         for ibond in range(u[:, 0, 0].size):
