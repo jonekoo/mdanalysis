@@ -629,12 +629,23 @@ class WaterOrientationalRelaxation(object):
         self.bulk = bulk
         self.correlate = self.correlatefft
 
+        # Find out whether the water model is tip3p or tip4p (or any of
+        # the variants).
+        water = self.universe.select_atoms(selection)
+        if water.names[3] == 'O':
+            self.nsites = 3
+        elif water.names[3] == 'EPW':
+            self.nsites = 4
+        else:
+            print("Warning: Unknown water model/file format. " +
+                  "Results may vary.")
+
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
         Indicate the comparation between all the t+dt.
         The results is a list of list with all the repeated index per
         frame (or time).
-        
+
         Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
@@ -807,8 +818,8 @@ class WaterOrientationalRelaxation(object):
         self.OHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            Os = ps[0::3]
-            H1s = ps[1::3]
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
             # Compute unit vectors of orientation for the OH bonds
             OHs = H1s-Os
             OHnorm = np.linalg.norm(OHs, axis=1)
@@ -822,8 +833,8 @@ class WaterOrientationalRelaxation(object):
         self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            H1s = ps[1::3]
-            H2s = ps[2::3]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
 
             # Compute unit vectors of orientation for the HH bonds.
             HHs = H1s-H2s
@@ -838,9 +849,9 @@ class WaterOrientationalRelaxation(object):
         self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            Os = ps[0::3]
-            H1s = ps[1::3]
-            H2s = ps[2::3]
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
 
             # Compute unit vectors of orientation for the dipole vectors.
             dips = (H1s+H2s)*0.5 - Os
