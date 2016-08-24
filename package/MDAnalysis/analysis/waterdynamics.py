@@ -327,7 +327,6 @@ Classes
 """
 from __future__ import print_function
 from six.moves import range, zip_longest
-
 import numpy as np
 import multiprocessing
 import sys
@@ -1705,8 +1704,11 @@ class WaterOrientationalRelaxation(object):
             self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
             self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
 
+        self.C2s = []
         C2_OH = self.correlate(self.OHs)
         del self.OHs
+        self.OHC2s = self.C2s
+        del self.C2s
 
         self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
@@ -1721,11 +1723,11 @@ class WaterOrientationalRelaxation(object):
             self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
             self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
 
+        self.C2s = []
         C2_HH = self.correlate(self.HHs)
-        #self.C2s = []
-        #self.averagesinglefft(self.HHs)
-        #self.storesingleffts(self.HHs)
         del self.HHs
+        self.HHC2s = self.C2s
+        del self.C2s
 
         self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
@@ -1741,8 +1743,11 @@ class WaterOrientationalRelaxation(object):
             self.dips[:, 1, i] = dips[:, 1] / dipnorm
             self.dips[:, 2, i] = dips[:, 2] / dipnorm
 
+        self.C2s = []
         C2_dip = self.correlate(self.dips)
         del self.dips
+        self.dipC2s = self.C2s
+        del self.C2s
 
         self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
         self.timeseries[:, 0] = C2_OH
@@ -1792,14 +1797,12 @@ class WaterOrientationalRelaxation(object):
     def averagesinglefft(self, u):
         C2 = 0.0
         for ibond in range(u[:, 0, 0].size):
-            C2 += self.correlatesinglefft(u[ibond, :, :])
+            single = self.correlatesinglefft(u[ibond, :, :])
+            self.C2s.append(single)
+            C2 += single
         C2 /= u[:, 0, 0].size
         return C2
 
-    def storesingleffts(self, u):
-        for ibond in range(u[:, 0, 0].size):
-            self.C2s.append(self.correlatesinglefft(u[ibond, :, :]))
-        
     # arr is 3 x nframes
     def correlatesinglefft(self, arr):
         C2 = 0.0
