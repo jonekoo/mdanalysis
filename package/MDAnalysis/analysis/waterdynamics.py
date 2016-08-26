@@ -815,7 +815,8 @@ class WaterOrientationalRelaxation(object):
         """
         group = self.universe.select_atoms(self.selection)
 
-        self.OHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
             Os = ps[0::self.nsites]
@@ -830,7 +831,8 @@ class WaterOrientationalRelaxation(object):
         C2_OH = self.correlate(self.OHs)
         del self.OHs
 
-        self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
             H1s = ps[1::self.nsites]
@@ -846,7 +848,8 @@ class WaterOrientationalRelaxation(object):
         C2_HH = self.correlate(self.HHs)
         del self.HHs
 
-        self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                             dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
             Os = ps[0::self.nsites]
