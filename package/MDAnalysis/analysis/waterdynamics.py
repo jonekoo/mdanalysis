@@ -632,9 +632,9 @@ class WaterOrientationalRelaxation(object):
         # Find out whether the water model is tip3p or tip4p (or any of
         # the variants).
         water = self.universe.select_atoms(selection)
-        if all([item == 'O' for item in water.names[::3]]):
+        if all([item.startswith('O') for item in water.names[::3]]):
             self.nsites = 3
-        elif all([item == 'O' for item in water.names[::4]]):
+        elif all([item.startswith('O') for item in water.names[::4]]):
             self.nsites = 4
         else:
             print("Warning: Unknown water model/file format. " +
