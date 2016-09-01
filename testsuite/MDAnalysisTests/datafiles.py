@@ -2,8 +2,8 @@
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 fileencoding=utf-8
 #
 # MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver
+# Beckstein and contributors (see AUTHORS for the full list)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
@@ -104,7 +104,7 @@ __all__ = [
     "two_water_gro_widebox",  # Issue #548
     "DLP_CONFIG", "DLP_CONFIG_order", "DLP_CONFIG_minimal",  # dl_poly 4 config file
     "DLP_HISTORY", "DLP_HISTORY_order", "DLP_HISTORY_minimal",  # dl_poly 4 history file
-    "waterPSF","waterDCD","bulkworDCD","rmsfArray",
+    "waterPSF","waterDCD","bulkworDCD","tip4p05prmtop","tip4p05bulkworDCD","rmsfArray",
     "HoomdXMLdata",
     "Make_Whole",  # for testing the function lib.mdamath.make_whole, has 9 atoms
     "Plength",
@@ -317,6 +317,8 @@ DLP_HISTORY_minimal = resource_filename(__name__, "data/dlpoly/HISTORY_minimal")
 waterPSF = resource_filename(__name__, 'data/watdyn.psf')
 waterDCD = resource_filename(__name__, 'data/watdyn.dcd')
 bulkworDCD = resource_filename(__name__, 'data/bulkwor.dcd')
+tip4p05prmtop = resource_filename(__name__, 'data/tip4p05.prmtop')
+tip4p05bulkworDCD = resource_filename(__name__, 'data/tip4p05bulkwor.dcd')
 
 rmsfArray = resource_filename(__name__, 'data/adk_oplsaa_CA_rmsf.npy')
 
