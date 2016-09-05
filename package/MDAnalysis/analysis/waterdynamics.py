@@ -620,6 +620,9 @@ class WaterOrientationalRelaxation(object):
        match the selection in the first frame, e.g. all the water molecules.
        This is much more efficient than checking for matching molecules in
        the selections for all two pairs of frames.
+      *single*
+       When True and if also bulk=True, the correlation functions are stored
+       for each water molecule.
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
