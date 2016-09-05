@@ -620,10 +620,13 @@ class WaterOrientationalRelaxation(object):
        match the selection in the first frame, e.g. all the water molecules.
        This is much more efficient than checking for matching molecules in
        the selections for all two pairs of frames.
+      *single*
+       When True and if also bulk=True, the correlation functions are stored
+       for each water molecule.
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
-                 prefetch=True, bulk=False):
+                 prefetch=True, bulk=False, single=False):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
@@ -635,6 +638,8 @@ class WaterOrientationalRelaxation(object):
         self.timeseries = None
         self.bulk = bulk
         self.correlate = self.correlatefft
+        if single:
+            self.correlate = self.averagesinglefft
 
         # Find out whether the water model is tip3p or tip4p (or any of
         # the variants).
@@ -837,8 +842,11 @@ class WaterOrientationalRelaxation(object):
             self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
             self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
 
+        self.C2s = []
         C2_OH = self.correlate(self.OHs)
         del self.OHs
+        self.OHC2s = self.C2s
+        del self.C2s
 
         self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
                             dtype=float)
@@ -854,8 +862,11 @@ class WaterOrientationalRelaxation(object):
             self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
             self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
 
+        self.C2s = []
         C2_HH = self.correlate(self.HHs)
         del self.HHs
+        self.HHC2s = self.C2s
+        del self.C2s
 
         self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
                              dtype=float)
@@ -872,8 +883,11 @@ class WaterOrientationalRelaxation(object):
             self.dips[:, 1, i] = dips[:, 1] / dipnorm
             self.dips[:, 2, i] = dips[:, 2] / dipnorm
 
+        self.C2s = []
         C2_dip = self.correlate(self.dips)
         del self.dips
+        self.dipC2s = self.C2s
+        del self.C2s
 
         self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
         self.timeseries[:, 0] = C2_OH
@@ -919,6 +933,28 @@ class WaterOrientationalRelaxation(object):
         acf = fvi * np.conjugate(fvi)
         acf = np.fft.ifft(acf)
         return np.real(acf[:N])
+
+    def averagesinglefft(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            single = self.correlatesinglefft(u[ibond, :, :])
+            self.C2s.append(single)
+            C2 += single
+        C2 /= u[:, 0, 0].size
+        return C2
+
+    # arr is 3 x nframes
+    def correlatesinglefft(self, arr):
+        C2 = 0.0
+        for i in range(3):
+            C2 += self.acf_fft(arr[i, :]**2)
+        C2 += 2 * (self.acf_fft(arr[0, :] * arr[1, :]) +
+                   self.acf_fft(arr[0, :] * arr[2, :]) +
+                   self.acf_fft(arr[1, :] * arr[2, :]))
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
 
     def correlatefft(self, u):
         C2 = 0.0

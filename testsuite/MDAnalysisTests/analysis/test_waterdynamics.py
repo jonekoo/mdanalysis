@@ -15,7 +15,7 @@
 #
 from __future__ import print_function
 import MDAnalysis
-import MDAnalysis.analysis.waterdynamics
+import MDAnalysis.analysis.waterdynamics as mdawd
 
 from numpy.testing import TestCase, assert_equal, dec
 
@@ -34,25 +34,25 @@ class TestWaterdynamics(TestCase):
         self.selection2 = self.selection1
 
     def test_HydrogenBondLifetimes(self):
-        hbl = MDAnalysis.analysis.waterdynamics.HydrogenBondLifetimes(
+        hbl = mdawd.HydrogenBondLifetimes(
             self.universe, self.selection1, self.selection2, 0, 5, 3)
         hbl.run(quiet=True)
         assert_equal(round(hbl.timeseries[2][1], 5), 0.75)
 
     def test_WaterOrientationalRelaxation(self):
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2)
         wor.run(quiet=True)
         assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
 
     def test_WaterOrientationalRelaxation_dtmin(self):
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, dtmin=2)
         wor.run(quiet=True)
         assert_equal(round(wor.timeseries[0][2], 5), 0.45902)
 
     def test_WaterOrientationalRelaxation_prefetch(self):
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.WaterOrientationalRelaxation(
             self.universe, self.selection1, 0, 5, 2, prefetch=False)
         wor.run(quiet=True)
         assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
@@ -162,20 +162,54 @@ class TestWaterdynamics(TestCase):
             assert_equal(round(rec[1], 5),
                          round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
 
+    def test_WaterOrientationalRelaxation_bulk_single(self):
+        # Fabricate data in which only a single molecule is rotating at
+        # constant angular velocity around its dipole axis.
+        u = MDAnalysis.Universe(waterPSF, bulkworDCD)
+
+        # Select only the first water molecule and test
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            u, self.selection1, 0, len(u.trajectory), len(u.trajectory)-1,
+            bulk=True, single=True)
+        wor.run()
+
+        print(len(wor.HHC2s[1]))
+        # Test the lenght of timeseries:
+        for C2 in wor.HHC2s:
+            assert_equal(len(C2), len(u.trajectory))
+
+        # Test correlation at time t=0 for :
+        for C2 in wor.HHC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+        for C2 in wor.OHC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+        for C2 in wor.dipC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+
+        w = 0.1  # angular velocity, radians/timestep
+        # Correlation at general time t:
+        for i, rec in enumerate(wor.HHC2s[0]):
+            # H-H bond:
+            assert_equal(round(rec, 5),
+                         round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
+        for i, rec in enumerate(wor.dipC2s[0]):
+            # Dipole vector:
+            assert_equal(round(rec, 5), 1.0)
+
     def test_AngularDistribution(self):
-        ad = MDAnalysis.analysis.waterdynamics.AngularDistribution(
+        ad = mdawd.AngularDistribution(
             self.universe, self.selection1, 40)
         ad.run(quiet=True)
         assert_equal(str(ad.graph[0][39]), str("0.951172947884 0.48313682125"))
 
     def test_MeanSquareDisplacement(self):
-        msd = MDAnalysis.analysis.waterdynamics.MeanSquareDisplacement(
+        msd = mdawd.MeanSquareDisplacement(
             self.universe, self.selection1, 0, 10, 2)
         msd.run(quiet=True)
         assert_equal(round(msd.timeseries[1], 5), 0.03984)
 
     def test_SurvivalProbability(self):
-        sp = MDAnalysis.analysis.waterdynamics.SurvivalProbability(
+        sp = mdawd.SurvivalProbability(
             self.universe, self.selection1, 0, 6, 3)
         sp.run(quiet=True)
         assert_equal(round(sp.timeseries[1], 5), 1.0)
