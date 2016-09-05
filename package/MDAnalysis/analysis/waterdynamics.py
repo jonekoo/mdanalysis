@@ -1485,8 +1485,10 @@ class WaterOrientationalRelaxation(object):
       *universe*
          Universe object
       *selection*
-       Selection string, only models with 3 atoms molecules are allowed
-       (TIP3, TIP3P, etc)
+       Selection string, only models with 3-atom molecules (TIP3, TIP3P, etc)
+       are allowed if bulk=False. If bulk=True, also models with 4 sites
+       (TIP4P and variations) work if the order of the atoms is
+       (O, H1, H2, EP).
       *t0*
        Time where analysis begin
       *tf*
@@ -1497,8 +1499,13 @@ class WaterOrientationalRelaxation(object):
        Minimum dt size window, 0 < dtmin < dtmax.
       *prefetch*
        When True, the selection is fetched into memory from the whole
-       trajectory.
-
+       trajectory before computing the correlations. Not effective if
+       bulk=True.
+      *bulk*
+       When True, the correlation functions are computed for molecules that
+       match the selection in the first frame, e.g. all the water molecules.
+       This is much more efficient than checking for matching molecules in
+       the selections for all two pairs of frames.
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
@@ -1517,12 +1524,25 @@ class WaterOrientationalRelaxation(object):
         if single:
             self.correlate = self.averagesinglefft
 
+        # Find out whether the water model is tip3p or tip4p (or any of
+        # the variants).
+        water = self.universe.select_atoms(selection)
+        if all([item.startswith('O') for item in water.names[::3]]):
+            self.nsites = 3
+        elif all([item.startswith('O') for item in water.names[::4]]):
+            self.nsites = 4
+        else:
+            print("Warning: Unknown water model/file format. " +
+                  "Results may vary.")
+        if self.nsites == 4 and not bulk:
+            print("ERROR: Only 3-site water models allowed when bulk=False")
+
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
         Indicate the comparation between all the t+dt.
         The results is a list of list with all the repeated index per
         frame (or time).
-        
+
         Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
@@ -1692,11 +1712,12 @@ class WaterOrientationalRelaxation(object):
         """
         group = self.universe.select_atoms(self.selection)
 
-        self.OHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            Os = ps[0::3]
-            H1s = ps[1::3]
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
             # Compute unit vectors of orientation for the OH bonds
             OHs = H1s-Os
             OHnorm = np.linalg.norm(OHs, axis=1)
@@ -1710,11 +1731,12 @@ class WaterOrientationalRelaxation(object):
         self.OHC2s = self.C2s
         del self.C2s
 
-        self.HHs = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            H1s = ps[1::3]
-            H2s = ps[2::3]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
 
             # Compute unit vectors of orientation for the HH bonds.
             HHs = H1s-H2s
@@ -1729,12 +1751,13 @@ class WaterOrientationalRelaxation(object):
         self.HHC2s = self.C2s
         del self.C2s
 
-        self.dips = np.zeros((len(group) / 3, 3, self.tf-self.t0), dtype=float)
+        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                             dtype=float)
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             ps = group.positions
-            Os = ps[0::3]
-            H1s = ps[1::3]
-            H2s = ps[2::3]
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
 
             # Compute unit vectors of orientation for the dipole vectors.
             dips = (H1s+H2s)*0.5 - Os
