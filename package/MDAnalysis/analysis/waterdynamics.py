@@ -599,8 +599,10 @@ class WaterOrientationalRelaxation(object):
       *universe*
          Universe object
       *selection*
-       Selection string, only models with 3 atoms molecules are allowed
-       (TIP3, TIP3P, etc)
+       Selection string, only models with 3-atom molecules (TIP3, TIP3P, etc)
+       are allowed if bulk=False. If bulk=True, also models with 4 sites
+       (TIP4P and variations) work if the order of the atoms is
+       (O, H1, H2, EP).
       *t0*
        Time where analysis begin
       *tf*
@@ -611,8 +613,13 @@ class WaterOrientationalRelaxation(object):
        Minimum dt size window, 0 < dtmin < dtmax.
       *prefetch*
        When True, the selection is fetched into memory from the whole
-       trajectory.
-
+       trajectory before computing the correlations. Not effective if
+       bulk=True.
+      *bulk*
+       When True, the correlation functions are computed for molecules that
+       match the selection in the first frame, e.g. all the water molecules.
+       This is much more efficient than checking for matching molecules in
+       the selections for all two pairs of frames.
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
@@ -639,6 +646,8 @@ class WaterOrientationalRelaxation(object):
         else:
             print("Warning: Unknown water model/file format. " +
                   "Results may vary.")
+        if self.nsites == 4 and not bulk:
+            print("ERROR: Only 3-site water models allowed when bulk=False")
 
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
