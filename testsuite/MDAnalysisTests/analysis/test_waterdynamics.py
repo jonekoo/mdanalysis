@@ -19,7 +19,8 @@ import MDAnalysis.analysis.waterdynamics
 
 from numpy.testing import TestCase, assert_equal, dec
 
-from MDAnalysisTests.datafiles import waterPSF, waterDCD, bulkworDCD
+from MDAnalysisTests.datafiles import waterPSF, waterDCD, bulkworDCD, \
+    tip4p05prmtop, tip4p05bulkworDCD
 from MDAnalysisTests import parser_not_found
 import numpy
 
@@ -81,6 +82,63 @@ class TestWaterdynamics(TestCase):
                     water.positions = newpositions
                     writer.write_next_timestep(ts)
         u = MDAnalysis.Universe(waterPSF, bulkworDCD)
+
+        # Select only the first water molecule and test
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            u, selection, 0, len(u.trajectory), len(u.trajectory)-1,
+            bulk=True)
+        wor.run()
+
+        # Test the lenght of timeseries:
+        assert_equal(len(wor.timeseries), len(u.trajectory))
+
+        # Test correlation at time t=0 for :
+        assert_equal(round(wor.timeseries[0][0], 5), 1.00000)
+        assert_equal(round(wor.timeseries[0][1], 5), 1.00000)
+        assert_equal(round(wor.timeseries[0][2], 5), 1.00000)
+
+        # Correlation at general time t:
+        for i, rec in enumerate(wor.timeseries):
+            # Dipole vector:
+            assert_equal(round(rec[2], 5), 1.0)
+            # H-H bond:
+            assert_equal(round(rec[1], 5),
+                         round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
+
+    def test_WaterOrientationalRelaxation_bulk_tip4p(self):
+        selection1 = 'resname WAT'
+        w = 0.1  # angular velocity, radians/timestep
+        create = False
+        if create:
+            # Fabricate data in which only a single molecule is rotating at
+            # constant angular velocity around its dipole axis.
+            u = MDAnalysis.Universe(tip4p05prmtop, 'tip4p05temp.dcd')
+            water = u.select_atoms(selection1)
+            selection = selection1 + " and resid " + \
+                str(water.resids[0]) + "-" + str(water.resids[0])
+            # This code can be used to create the DCD file:
+            rO = [0.0, 0.0, 0.0]  # put the oxygen to the origin
+            rM = [0, 0, 0.1546]
+            rOH = 0.9572  # bond length, aengstroms
+            HOH = 104.52 / 180.0 * numpy.pi  # angle, radians
+            Hz = rOH * numpy.cos(HOH / 2)
+            Hx = rOH * numpy.sin(HOH / 2)
+            water = u.select_atoms(selection)
+            with MDAnalysis.coordinates.DCD.DCDWriter(
+                    tip4p05bulkworDCD,
+                    n_atoms=u.atoms.n_atoms) as writer:
+                for i, ts in enumerate(u.trajectory):
+                    newpositions = [
+                        rO, [Hx * numpy.cos(w * i), Hx * numpy.sin(w * i), Hz],
+                        [-Hx * numpy.cos(w * i), -Hx * numpy.sin(w * i), Hz],
+                        rM]
+                    water.positions = newpositions
+                    writer.write_next_timestep(ts)
+        u = MDAnalysis.Universe(tip4p05prmtop, tip4p05bulkworDCD)
+        water = u.select_atoms(selection1)
+        selection = selection1 + " and resid " + \
+            str(water.resids[0]) + "-" + str(water.resids[0])
+
 
         # Select only the first water molecule and test
         wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(

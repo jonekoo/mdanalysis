@@ -13,6 +13,13 @@ The rules for this file:
   * release numbers follow "Semantic Versioning" http://semver.org
 
 ------------------------------------------------------------------------------
+09/05/16 jonekoo
+
+Enhancements
+
+ * Added TIP4P support to WaterOrientationalRelaxation when using a stable
+   selection with bulk=True.
+
 ??/??/16
 
   * 0.15.1 kain88-de
