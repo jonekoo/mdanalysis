@@ -162,6 +162,40 @@ class TestWaterdynamics(TestCase):
             assert_equal(round(rec[1], 5),
                          round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
 
+    def test_WaterOrientationalRelaxation_bulk_single(self):
+        # Fabricate data in which only a single molecule is rotating at
+        # constant angular velocity around its dipole axis.
+        u = MDAnalysis.Universe(waterPSF, bulkworDCD)
+
+        # Select only the first water molecule and test
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            u, self.selection1, 0, len(u.trajectory), len(u.trajectory)-1,
+            bulk=True, single=True)
+        wor.run()
+
+        print(len(wor.HHC2s[1]))
+        # Test the lenght of timeseries:
+        for C2 in wor.HHC2s:
+            assert_equal(len(C2), len(u.trajectory))
+
+        # Test correlation at time t=0 for :
+        for C2 in wor.HHC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+        for C2 in wor.OHC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+        for C2 in wor.dipC2s:
+            assert_equal(round(C2[0], 5), 1.00000)
+
+        w = 0.1  # angular velocity, radians/timestep
+        # Correlation at general time t:
+        for i, rec in enumerate(wor.HHC2s[0]):
+            # H-H bond:
+            assert_equal(round(rec, 5),
+                         round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
+        for i, rec in enumerate(wor.dipC2s[0]):
+            # Dipole vector:
+            assert_equal(round(rec, 5), 1.0)
+
     def test_AngularDistribution(self):
         ad = mdawd.AngularDistribution(
             self.universe, self.selection1, 40)
