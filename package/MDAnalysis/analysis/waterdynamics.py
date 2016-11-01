@@ -626,7 +626,7 @@ class WaterOrientationalRelaxation(object):
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
-                 prefetch=True, bulk=False, single=False):
+                 prefetch=True, bulk=False, single=False, allwater=None):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
@@ -640,15 +640,18 @@ class WaterOrientationalRelaxation(object):
         self.correlate = self.correlatefft
         if single:
             self.correlate = self.averagesinglefft
+        self.allwater = allwater
 
         # Find out whether the water model is tip3p or tip4p (or any of
         # the variants).
         water = self.universe.select_atoms(selection)
-        if all([item.startswith('O') for item in water.names[::3]]):
+        # Check that selection is water:
+        if all([item.startswith('O') for item in water.residues.names[::3]]):
             self.nsites = 3
-        elif all([item.startswith('O') for item in water.names[::4]]):
+        elif all([item.startswith('O') for item in water.residues.names[::4]]):
             self.nsites = 4
         else:
+            print([r.names for r in water.residues[:10]])
             print("Warning: Unknown water model/file format. " +
                   "Results may vary.")
         if self.nsites == 4 and not bulk:
@@ -894,6 +897,117 @@ class WaterOrientationalRelaxation(object):
         self.timeseries[:, 1] = C2_HH
         self.timeseries[:, 2] = C2_dip
 
+    def run_conditionally(self, **kwargs):
+        """
+        Analyze trajectory in the case the atoms in the selection do not
+        change over the trajectory. This means we can optimize a lot by
+        ignoring checking for atoms that match in timestep t and t+dt.
+        We can also cache all orientation vectors from t0 to tf.
+        """
+        group = self.universe.select_atoms(self.allwater)
+        # create array of residues to be included
+        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
+                              dtype=int)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            selected = self.universe.select_atoms(self.selection)
+            self.delta[:, i] = np.where(
+                np.in1d(group.resids[::self.nsites],
+                        selected.resids[::self.nsites]),
+                1, 0)
+
+        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            # Compute unit vectors of orientation for the OH bonds
+            OHs = H1s-Os
+            OHnorm = np.linalg.norm(OHs, axis=1)
+            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
+            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
+            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
+
+        self.C2s = []
+        C2_OH = self.correlateconditionally(self.OHs, self.delta)
+        del self.OHs
+        self.OHC2s = self.C2s
+        del self.C2s
+
+        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the HH bonds.
+            HHs = H1s-H2s
+            HHnorm = np.linalg.norm(HHs, axis=1)
+            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
+            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
+            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
+
+        self.C2s = []
+        C2_HH = self.correlateconditionally(self.HHs, self.delta)
+        del self.HHs
+        self.HHC2s = self.C2s
+        del self.C2s
+
+        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                             dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the dipole vectors.
+            dips = (H1s+H2s)*0.5 - Os
+            dipnorm = np.linalg.norm(dips, axis=1)
+            self.dips[:, 0, i] = dips[:, 0] / dipnorm
+            self.dips[:, 1, i] = dips[:, 1] / dipnorm
+            self.dips[:, 2, i] = dips[:, 2] / dipnorm
+
+        self.C2s = []
+        C2_dip = self.correlateconditionally(self.dips, self.delta)
+        del self.dips
+        self.dipC2s = self.C2s
+        del self.C2s
+
+        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
+        self.timeseries[:, 0] = C2_OH
+        self.timeseries[:, 1] = C2_HH
+        self.timeseries[:, 2] = C2_dip
+
+    def correlateconditionally(self, u, condition):
+        """Compute C2(t) for vectors u in the cases where condition is
+        true at t' and t'+t."""
+        C2 = 0.0
+        normalization = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            C2ibond = 0.0
+            for i in range(3):
+                for j in range(3):
+                    C2ibond += np.correlate(u[ibond, i, :] * u[ibond, j, :] *
+                                            condition[ibond, :],
+                                            u[ibond, i, :] * u[ibond, j, :] *
+                                            condition[ibond, :], 'full')
+            z = np.correlate(condition[ibond, :], condition[ibond, :], 'full')
+
+            z = z[z.size/2:]
+            C2ibond = C2ibond[C2ibond.size/2:]
+
+            C2ibond /= np.where(z == 0, 1, z)
+            C2ibond = np.where(z == 0, 0.0, C2ibond)
+            normalization += np.where(z == 0, 0, 1)
+            C2 += C2ibond
+        C2 /= np.where(normalization == 0, 1, normalization)
+        C2 = np.where(normalization == 0, np.nan, C2)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
     def correlatebrute(self, u):
         C2 = 0.0
         for ibond in range(u[:, 0, 0].size):
@@ -973,6 +1087,9 @@ class WaterOrientationalRelaxation(object):
         """
         Analyze trajectory and produce timeseries
         """
+        if self.allwater is not None:
+            self.run_conditionally()
+            return
         if self.bulk:
             self.run_bulk()
             return
