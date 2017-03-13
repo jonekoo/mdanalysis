@@ -623,10 +623,19 @@ class WaterOrientationalRelaxation(object):
       *single*
        When True and if also bulk=True, the correlation functions are stored
        for each water molecule.
+      *allwater*
+       When given, the selection will be compared to allwater to create a mask
+       in each frame of the trajectory. Only those molecules to which the mask
+       is true, contribute to the correlation function.
+      *ignore_gaps*
+       If allwater is given and ignore_gaps is True, the water molecule
+       contributes to the correlation function in all the subsequent frames
+       after the first one in which it is contained in the selection.
     """
 
     def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
-                 prefetch=True, bulk=False, single=False, allwater=None):
+                 prefetch=True, bulk=False, single=False, allwater=None,
+                 ignore_gaps=False, only_deltas=False):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
@@ -641,6 +650,8 @@ class WaterOrientationalRelaxation(object):
         if single:
             self.correlate = self.averagesinglefft
         self.allwater = allwater
+        self.ignore_gaps = ignore_gaps
+        self.only_deltas = only_deltas
 
         # Find out whether the water model is tip3p or tip4p (or any of
         # the variants).
@@ -656,6 +667,9 @@ class WaterOrientationalRelaxation(object):
                   "Results may vary.")
         if self.nsites == 4 and not bulk:
             print("ERROR: Only 3-site water models allowed when bulk=False")
+        if self.allwater is not None:
+            self.create_deltas()
+
 
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
@@ -897,23 +911,45 @@ class WaterOrientationalRelaxation(object):
         self.timeseries[:, 1] = C2_HH
         self.timeseries[:, 2] = C2_dip
 
-    def run_conditionally(self, **kwargs):
-        """
-        Analyze trajectory in the case the atoms in the selection do not
-        change over the trajectory. This means we can optimize a lot by
-        ignoring checking for atoms that match in timestep t and t+dt.
-        We can also cache all orientation vectors from t0 to tf.
-        """
+    def create_deltas(self):
         group = self.universe.select_atoms(self.allwater)
-        # create array of residues to be included
         self.delta = np.zeros((group.n_residues, self.tf-self.t0),
                               dtype=int)
+        # create array of residues to be included
         for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
             selected = self.universe.select_atoms(self.selection)
             self.delta[:, i] = np.where(
                 np.in1d(group.resids[::self.nsites],
                         selected.resids[::self.nsites]),
                 1, 0)
+        if self.ignore_gaps:
+            for dlt in self.delta:
+                first = np.where(dlt == 1)[0]
+                if first.size > 0:
+                    dlt[first[0]:] = 1
+
+    def run_conditionally(self, **kwargs):
+        """
+        Analyze trajectory in the case the selection changes over the
+        trajectory. Still cache the orientation vectors from the whole
+        trajectory.
+        """
+        group = self.universe.select_atoms(self.allwater)
+        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
+                              dtype=int)
+        # create array of residues to be included
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            selected = self.universe.select_atoms(self.selection)
+            self.delta[:, i] = np.where(
+                np.in1d(group.resids[::self.nsites],
+                        selected.resids[::self.nsites]),
+                1, 0)
+
+        if self.ignore_gaps:
+            for dlt in self.delta:
+                first = np.where(dlt == 1)[0]
+                if first.size > 0:
+                    dlt[first[0]:] = 1
 
         self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
                             dtype=float)
@@ -1087,6 +1123,8 @@ class WaterOrientationalRelaxation(object):
         """
         Analyze trajectory and produce timeseries
         """
+        if self.only_deltas:
+            return
         if self.allwater is not None:
             self.run_conditionally()
             return
