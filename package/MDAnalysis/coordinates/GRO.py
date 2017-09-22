@@ -1,13 +1,19 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -21,31 +27,50 @@ GRO file format --- :mod:`MDAnalysis.coordinates.GRO`
 Classes to read and write Gromacs_ GRO_ coordinate files; see the notes on the
 `GRO format`_ which includes a conversion routine for the box.
 
-GROWriter format strings
-------------------------
 
-The GROWriter class has a .fmt attribute, which is a dictionary of different
-strings for writing lines in .gro files.  These are as follows:
+Classes
+-------
 
-n_atoms
+.. autoclass:: Timestep
+   :members:
+
+.. autoclass:: GROReader
+   :members:
+
+.. autoclass:: GROWriter
+   :members:
+
+
+Developer notes: ``GROWriter`` format strings
+---------------------------------------------
+
+The :class:`GROWriter` class has a :attr:`GROWriter.fmt` attribute, which is a dictionary of different
+strings for writing lines in ``.gro`` files.  These are as follows:
+
+``n_atoms``
   For the first line of the gro file, supply the number of atoms in the system.
-  Eg: fmt['n_atoms'].format(42)
+  E.g.::
 
-xyz
+      fmt['n_atoms'].format(42)
+
+``xyz``
   An atom line without velocities.  Requires that the 'resid', 'resname',
   'name', 'index' and 'pos' keys be supplied.
-  Eg: fmt['xyz'].format(resid=1, resname='SOL', name='OW2', index=2,
-      pos=(0.0, 1.0, 2.0))
+  E.g.::
 
-xyz_v
+     fmt['xyz'].format(resid=1, resname='SOL', name='OW2', index=2, pos=(0.0, 1.0, 2.0))
+
+``xyz_v``
   As above, but with velocities.  Needs an additional keyword 'vel'.
 
-box_orthorhombic
+``box_orthorhombic``
   The final line of the gro file which gives box dimensions.  Requires
   the box keyword to be given, which should be the three cartesian dimensions.
-  Eg: fmt['box_orthorhombic'].format(box=(10.0, 10.0, 10.0))
+  E.g.::
 
-box_triclinic
+     fmt['box_orthorhombic'].format(box=(10.0, 10.0, 10.0))
+
+``box_triclinic``
   As above, but for a non orthorhombic box. Requires the box keyword, but this
   time as a length 9 vector.  This is a flattened version of the (3,3) triclinic
   vector representation of the unit cell.  The rearrangement into the odd
@@ -55,17 +80,21 @@ box_triclinic
 .. _Gromacs: http://www.gromacs.org
 .. _GRO: http://manual.gromacs.org/current/online/gro.html
 .. _GRO format: http://chembytes.wikidot.com/g-grofile
-"""
 
-from six.moves import range
+"""
+from __future__ import absolute_import
+
+from six.moves import range, zip
+import itertools
 import warnings
+
 import numpy as np
 
-from ..core import flags
 from . import base
-from ..lib import util
 from .core import triclinic_box, triclinic_vectors
+from ..core import flags
 from ..exceptions import NoDataError
+from ..lib import util
 
 
 class Timestep(base.Timestep):
@@ -111,9 +140,9 @@ class Timestep(base.Timestep):
         np.put(self._unitcell, self._ts_order_z, z)
 
 
-class GROReader(base.SingleFrameReader):
+class GROReader(base.SingleFrameReaderBase):
     """Reader for the Gromacs GRO structure format.
-    
+
     .. versionchanged:: 0.11.0
        Frames now 0-based instead of 1-based
     """
@@ -143,14 +172,14 @@ class GROReader(base.SingleFrameReader):
             for pos, line in enumerate(grofile, start=-2):
                 # 2 header lines, 1 box line at end
                 if pos == n_atoms:
-                    unitcell = np.array(list(map(float, line.split())))
+                    unitcell = np.float32(line.split())
                     continue
                 if pos < 0:
                     continue
 
-                ts._pos[pos] = [line[20 + cs*i:20 + cs*(i+1)] for i in range(3)]
+                ts._pos[pos] = [line[20 + cs * i:20 + cs * (i + 1)] for i in range(3)]
                 try:
-                    velocities[pos] = [line[20 + cs*i:20 + cs*(i+1)] for i in range(3, 6)]
+                    velocities[pos] = [line[20 + cs * i:20 + cs * (i + 1)] for i in range(3, 6)]
                 except ValueError:
                     # Remember that we got this error
                     missed_vel = True
@@ -179,35 +208,45 @@ class GROReader(base.SingleFrameReader):
                 # converts nm/ps to A/ps units
                 self.convert_velocities_from_native(self.ts._velocities)
 
-    def Writer(self, filename, **kwargs):
+    def Writer(self, filename, n_atoms=None, **kwargs):
         """Returns a CRDWriter for *filename*.
 
-        :Arguments:
-          *filename*
+        Parameters
+        ----------
+        filename: str
             filename of the output GRO file
 
-        :Returns: :class:`GROWriter`
+        Returns
+        -------
+        :class:`GROWriter`
 
         """
-        return GROWriter(filename, **kwargs)
+        if n_atoms is None:
+            n_atoms = self.n_atoms
+        return GROWriter(filename, n_atoms=n_atoms, **kwargs)
 
 
-class GROWriter(base.Writer):
+class GROWriter(base.WriterBase):
     """GRO Writer that conforms to the Trajectory API.
 
-    .. Note::
+    Will attempt to write the following information from the topology:
+     - atom name (defaults to 'X')
+     - resnames (defaults to 'UNK')
+     - resids (defaults to '1')
 
-       The precision is hard coded to three decimal places and
-       velocities are not written (yet).
+    Note
+    ----
+    The precision is hard coded to three decimal places
+
 
     .. versionchanged:: 0.11.0
        Frames now 0-based instead of 1-based
     .. versionchanged:: 0.13.0
-       Now strictly writes positions with 3dp precision
-       and velocities with 4dp
+       Now strictly writes positions with 3dp precision.
+       and velocities with 4dp.
        Removed the `convert_dimensions_to_unitcell` method,
-       use `Timestep.triclinic_dimensions` instead
-       Now now writes velocities where possible
+       use `Timestep.triclinic_dimensions` instead.
+       Now now writes velocities where possible.
     """
 
     format = 'GRO'
@@ -226,65 +265,103 @@ class GROWriter(base.Writer):
     }
     fmt['xyz_v'] = fmt['xyz'][:-1] + "{vel[0]:8.4f}{vel[1]:8.4f}{vel[2]:8.4f}\n"
 
-    def __init__(self, filename, convert_units=None, **kwargs):
+    def __init__(self, filename, convert_units=None, n_atoms=None, **kwargs):
         """Set up a GROWriter with a precision of 3 decimal places.
 
-        :Arguments:
-           *filename*
-              output filename
+        Parameters
+        -----------
+        filename : str
+            output filename
+
+        n_atoms : int (optional)
+            number of atoms
+
+        convert_units : str (optional)
+            units are converted to the MDAnalysis base format; ``None`` selects
+            the value of :data:`MDAnalysis.core.flags` ['convert_lengths']
         """
         self.filename = util.filename(filename, ext='gro')
+        self.n_atoms = n_atoms
 
         if convert_units is None:
             convert_units = flags['convert_lengths']
         self.convert_units = convert_units  # convert length and time to base units
 
-    def write(self, selection, frame=None):
+    def write(self, obj):
         """Write selection at current trajectory frame to file.
 
-        :Arguments:
-          selection
-              MDAnalysis AtomGroup (selection or Universe.atoms)
-              or also Universe
-        :Keywords:
-          frame
-              optionally move to frame number *frame*
+        Parameters
+        -----------
+        obj : AtomGroup or Universe or :class:`Timestep`
 
-        The GRO format only allows 5 digits for resid and atom
-        number. If these number become larger than 99,999 then this
+        Note
+        ----
+        The GRO format only allows 5 digits for *resid* and *atom
+        number*. If these numbers become larger than 99,999 then this
         routine will chop off the leading digits.
 
+
         .. versionchanged:: 0.7.6
-           resName and atomName are truncated to a maximum of 5 characters
+           *resName* and *atomName* are truncated to a maximum of 5 characters
+        .. versionchanged:: 0.16.0
+           `frame` kwarg has been removed
         """
         # write() method that complies with the Trajectory API
-        u = selection.universe
-        if frame is not None:
-            u.trajectory[frame]  # advance to frame
-        else:
-            frame = u.trajectory.ts.frame
-
-        # make sure to use atoms (Issue 46)
-        atoms = selection.atoms
-        # can write from selection == Universe (Issue 49)
-        coordinates = atoms.positions
 
         try:
-            velocities = atoms.velocities
+
+            # make sure to use atoms (Issue 46)
+            ag_or_ts = obj.atoms
+            # can write from selection == Universe (Issue 49)
+
+        except AttributeError:
+            if isinstance(obj, base.Timestep):
+                ag_or_ts = obj.copy()
+            else:
+                raise TypeError("No Timestep found in obj argument")
+
+        try:
+            velocities = ag_or_ts.velocities
         except NoDataError:
             has_velocities = False
         else:
             has_velocities = True
 
+        # Check for topology information
+        missing_topology = []
+        try:
+            names = ag_or_ts.names
+        except (AttributeError, NoDataError):
+            names = itertools.cycle(('X',))
+            missing_topology.append('names')
+        try:
+            resnames = ag_or_ts.resnames
+        except (AttributeError, NoDataError):
+            resnames = itertools.cycle(('UNK',))
+            missing_topology.append('resnames')
+        try:
+            resids = ag_or_ts.resids
+        except (AttributeError, NoDataError):
+            resids = itertools.cycle((1,))
+            missing_topology.append('resids')
+        if missing_topology:
+            warnings.warn(
+                "Supplied AtomGroup was missing the following attributes: "
+                "{miss}. These will be written with default values. "
+                "Alternatively these can be supplied as keyword arguments."
+                "".format(miss=', '.join(missing_topology)))
+
+        positions = ag_or_ts.positions
+
         if self.convert_units:
             # Convert back to nm from Angstroms,
-            # inplace because coordinates is already a copy
-            self.convert_pos_to_native(coordinates)
+            # Not inplace because AtomGroup is not a copy
+            positions = self.convert_pos_to_native(positions, inplace=False)
             if has_velocities:
-               self.convert_velocities_to_native(velocities) 
+                velocities = self.convert_velocities_to_native(velocities, inplace=False)
         # check if any coordinates are illegal
         # (checks the coordinates in native nm!)
-        if not self.has_valid_coordinates(self.gro_coor_limits, coordinates):
+        if not self.has_valid_coordinates(self.gro_coor_limits, positions):
             raise ValueError("GRO files must have coordinate values between "
                              "{0:.3f} and {1:.3f} nm: No file was written."
                              "".format(self.gro_coor_limits["min"],
@@ -293,40 +370,51 @@ class GROWriter(base.Writer):
         with util.openany(self.filename, 'wt') as output_gro:
             # Header
             output_gro.write('Written by MDAnalysis\n')
-            output_gro.write(self.fmt['n_atoms'].format(len(atoms)))
+            output_gro.write(self.fmt['n_atoms'].format(ag_or_ts.n_atoms))
+
             # Atom descriptions and coords
-            for atom_index, atom in enumerate(atoms):
-                truncated_atom_index = int(str(atom_index + 1)[-5:])
+            # Dont use enumerate here,
+            # all attributes could be infinite cycles!
+            for atom_index, resid, resname, name in zip(
+                    range(ag_or_ts.n_atoms), resids, resnames, names):
+                truncated_atom_index = util.ltruncate_int(atom_index + 1, 5)
+                truncated_resid = util.ltruncate_int(resid, 5)
                 if has_velocities:
                     output_gro.write(self.fmt['xyz_v'].format(
-                        resid=atom.resid,
-                        resname=atom.resname,
+                        resid=truncated_resid,
+                        resname=resname,
                         index=truncated_atom_index,
-                        name=atom.name,
-                        pos=coordinates[atom_index],
+                        name=name,
+                        pos=positions[atom_index],
                         vel=velocities[atom_index],
                     ))
                 else:
                     output_gro.write(self.fmt['xyz'].format(
-                        resid=atom.resid,
-                        resname=atom.resname,
+                        resid=truncated_resid,
+                        resname=resname,
                         index=truncated_atom_index,
-                        name=atom.name,
-                        pos=coordinates[atom_index]
+                        name=name,
+                        pos=positions[atom_index]
                     ))
 
             # Footer: box dimensions
-            if np.all(u.trajectory.ts.dimensions[3:] == [90., 90., 90.]):
+            if np.allclose(ag_or_ts.dimensions[3:], [90., 90., 90.]):
                 box = self.convert_pos_to_native(
-                    u.coord.dimensions[:3], inplace=False)
+                    ag_or_ts.dimensions[:3], inplace=False)
                 # orthorhombic cell, only lengths along axes needed in gro
                 output_gro.write(self.fmt['box_orthorhombic'].format(
                     box=box)
                 )
             else:
+
+                try:  # for AtomGroup/Universe
+                    tri_dims = obj.universe.coord.triclinic_dimensions
+                except AttributeError:  # for Timestep
+                    tri_dims = obj.triclinic_dimensions
+
                 # full output
                 box = self.convert_pos_to_native(
-                    u.coord.triclinic_dimensions.flatten(), inplace=False)
+                    tri_dims.flatten(), inplace=False)
                 output_gro.write(self.fmt['box_triclinic'].format(
                     box=box)
                 )

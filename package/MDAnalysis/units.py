@@ -1,13 +1,19 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding: utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -106,7 +112,11 @@ concentration:
   from `rho/rho0 = n/(N_A * M**-1) / rho0`  where `[n] = 1/Volume`, `[rho] = mass/Volume`
 
 
-.. SeeAlso:: Maybe we should simply use Quantities_ or :mod:`scipy.constants`?
+Note
+----
+In the future me might move towards using the Quantities_ package or
+:mod:`scipy.constants`.
+
 
 .. _Quantities: http://packages.python.org/quantities/
 
@@ -155,7 +165,7 @@ References and footnotes
 
 """
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, division
 
 #: `Avogadro's constant`_ in mol**-1.
 #:
@@ -250,6 +260,10 @@ speedUnit_factor = {
     'Angstrom/ps': 1.0, 'A/ps': 1.0, '\u212b/ps': 1.0,
     'Angstrom/picosecond': 1.0,
     'angstrom/picosecond': 1.0,  # 1
+    'Angstrom/fs': 1.0 * 1e3,
+    'Angstrom/femtosecond': 1.0 * 1e3,
+    'angstrom/femtosecond': 1.0 * 1e3,
+    'angstrom/fs': 1.0 * 1e3,
     'Angstrom/AKMA': 4.888821e-2,
     'nm/ps': 0.1, 'nanometer/ps': 0.1, 'nanometer/picosecond': 0.1,  # 1/10
     'nm/ns': 0.1 / 1e-3,
@@ -334,11 +348,16 @@ def get_conversion_factor(unit_type, u1, u2):
 def convert(x, u1, u2):
     """Convert value *x* in unit *u1* to new value in *u2*.
 
-    :Returns: Converted value.
+    Returns
+    -------
+    float
+        Converted value.
 
-    :Raises: :Exc:`ValueError` if the units are not known or if
-             one attempts to convert between incompatible
-             units.
+    Raises
+    ------
+    ValueError
+        The units are not known or if one attempts to convert between
+        incompatible units.
     """
     try:
         ut1 = unit_types[u1]

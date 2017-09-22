@@ -1,3 +1,25 @@
+# -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 fileencoding=utf-8
+#
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
+#
+# Released under the GNU Public Licence, v2 or any higher version
+#
+# Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
+from __future__ import absolute_import
 import numpy as np
 
 from MDAnalysisTests import datafiles
@@ -202,10 +224,10 @@ class RefTRZ(object):
 
 class RefLAMMPSData(object):
     filename = LAMMPSdata
-    n_atoms = 18360
+    n_atoms = 18364
     pos_atom1 = np.array([11.89985657, 48.4455719, 19.09719849],
                          dtype=np.float32)
-    vel_atom1 = np.array([-5.667593, 7.91380978, -3.00779533],
+    vel_atom1 = np.array([-0.005667593, 0.00791380978, -0.00300779533],
                          dtype=np.float32)
     dimensions = np.array([55.42282867, 55.42282867, 55.42282867, 90., 90., 90.
                            ],
@@ -228,37 +250,6 @@ class RefLAMMPSDataMini(object):
     n_atoms = 1
     pos_atom1 = np.array([11.89985657, 48.4455719, 19.09719849],
                          dtype=np.float32)
-    vel_atom1 = np.array([-5.667593, 7.91380978, -3.00779533],
+    vel_atom1 = np.array([-0.005667593, 0.00791380978, -0.00300779533],
                          dtype=np.float32)
     dimensions = np.array([60., 50., 30., 90., 90., 90.], dtype=np.float32)
-
-
-class RefCHARMMtriclinicDCD(object):
-    topology = PSF_TRICLINIC
-    trajectory = DCD_TRICLINIC
-    # time(ps) A B C alpha beta gamma (length in Angstrome, angles in degrees)
-    # dcd starts at t = 1ps
-    ref_dimensions = np.array([
-        [1., 35.44604, 35.06156, 34.1585, 91.32802, 61.73521, 44.40703],
-        [2., 34.65957, 34.22689, 33.09897, 90.56206, 61.79192, 44.14549],
-        [3., 34.52772, 34.66422, 33.53881, 90.55859, 63.11228, 40.14044],
-        [4., 34.43749, 33.38432, 34.02133, 88.82457, 64.98057, 36.77397],
-        [5., 33.73129, 32.47752, 34.18961, 89.88102, 65.89032, 36.10921],
-        [6., 33.78703, 31.90317, 34.98833, 90.03092, 66.12877, 35.07141],
-        [7., 33.24708, 31.18271, 34.9654, 93.11122, 68.17743, 35.73643],
-        [8., 32.92599, 30.31393, 34.99197, 93.89051, 69.3799, 33.48945],
-        [9., 32.15295, 30.43056, 34.96157, 96.01416, 71.50115, 32.56111],
-        [10., 31.99748, 30.21518, 35.24292, 95.85821, 71.08429, 31.85939]
-    ])
-
-
-class RefNAMDtriclinicDCD(object):
-    topology = PSF_NAMD_TRICLINIC
-    trajectory = DCD_NAMD_TRICLINIC
-    # vmd topology trajectory
-    # molinfo 0 get {a b c alpha beta gamma}
-    # time(ps) A B C alpha beta gamma (length in Angstrome, angles in degrees)
-    ref_dimensions = np.array([
-        [1., 38.426594, 38.393101, 44.759800, 90.000000, 90.000000, 60.028915],
-    ])
-

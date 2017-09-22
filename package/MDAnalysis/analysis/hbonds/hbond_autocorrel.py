@@ -1,13 +1,19 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -32,7 +38,8 @@ given startpoint, :math:`t_0`, is evaluated based on geometric criteria and
 then the lifetime of these bonds is monitored over time.  Multiple passes
 through the trajectory are used to build an average of the behaviour.
 
-    :math:`C_x(t) = \\left \\langle \\frac{h_{ij}(t_0) h_{ij}(t_0 + t)}{h_{ij}(t_0)^2} \\right\\rangle`
+.. math::
+   C_x(t) = \\left \\langle \\frac{h_{ij}(t_0) h_{ij}(t_0 + t)}{h_{ij}(t_0)^2} \\right\\rangle
 
 The subscript :math:`x` refers to the definition of lifetime being used, either
 continuous or intermittent.  The continuous definition measures the time that
@@ -41,7 +48,8 @@ intermittent definition allows a bond to break and then subsequently reform and
 be counted again.  The relevent lifetime, :math:`\\tau_x`, can then be found
 via integration of this function
 
-    :math:`\\tau_x = \\int_0^\\infty C_x(t) dt`
+.. math::
+   \\tau_x = \\int_0^\\infty C_x(t) dt`
 
 For this, the observed behaviour is fitted to a multi exponential function,
 using 2 exponents for the continuous lifetime and 3 for the intermittent
@@ -144,8 +152,11 @@ Examples
 
 
 """
+from __future__ import division, absolute_import
 from six.moves import zip
 import numpy as np
+import scipy.optimize
+
 import warnings
 
 from MDAnalysis.lib.log import ProgressMeter
@@ -153,7 +164,7 @@ from MDAnalysis.lib.distances import distance_array, calc_angles, calc_bonds
 
 
 class HydrogenBondAutoCorrel(object):
-    """Perform a time autocorrelation of the hydrogen bonds in the system. 
+    """Perform a time autocorrelation of the hydrogen bonds in the system.
 
     Parameters
     ----------
@@ -268,7 +279,7 @@ class HydrogenBondAutoCorrel(object):
         # limit stop points using clip
         self._stops = np.clip(self._starts + req_frames, 0, n_frames)
 
-        self._skip = req_frames / self.nsamples
+        self._skip = req_frames // self.nsamples
         if self._skip == 0:  # If nsamples > req_frames
             warnings.warn("Desired number of sample points too high, using {0}"
                           .format(req_frames), RuntimeWarning)
@@ -277,8 +288,8 @@ class HydrogenBondAutoCorrel(object):
     def run(self, force=False):
         """Run all the required passes
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         force : bool, optional
             Will overwrite previous results if they exist
         """
@@ -412,8 +423,10 @@ class HydrogenBondAutoCorrel(object):
             Initial guess for the leastsq fit, must match the shape of the
             expected coefficients
 
-        Continuous defition results are fitted to a double exponential,
-        intermittent definition are fit to a triple exponential.
+
+        Continuous defition results are fitted to a double exponential with
+        :func:`scipy.optimize.leastsq`, intermittent definition are fit to a
+        triple exponential.
 
         The results of this fitting procedure are saved into the *fit*,
         *tau* and *estimate* keywords in the solution dict.
@@ -425,14 +438,14 @@ class HydrogenBondAutoCorrel(object):
          - *estimate* contains the estimate provided by the fit of the time
            autocorrelation function
 
-        In addition, the output of the leastsq function is saved into the
-        solution dict
+        In addition, the output of the :func:`~scipy.optimize.leastsq` function
+        is saved into the solution dict
 
          - *infodict*
          - *mesg*
          - *ier*
+
         """
-        from scipy.optimize import leastsq
 
         if self.solution['results'] is None:
             raise ValueError(
@@ -489,9 +502,8 @@ class HydrogenBondAutoCorrel(object):
             if p_guess is None:
                 p_guess = (0.5, 10 * self.sample_time, self.sample_time)
 
-            p, cov, infodict, mesg, ier = leastsq(err, p_guess,
-                                                  args=(time, results),
-                                                  full_output=True)
+                p, cov, infodict, mesg, ier = scipy.optimize.leastsq(
+                err, p_guess, args=(time, results), full_output=True)
             self.solution['fit'] = p
             A1, tau1, tau2 = p
             A2 = 1 - A1
@@ -503,9 +515,8 @@ class HydrogenBondAutoCorrel(object):
                 p_guess = (0.33, 0.33, 10 * self.sample_time,
                            self.sample_time, 0.1 * self.sample_time)
 
-            p, cov, infodict, mesg, ier = leastsq(err, p_guess,
-                                                  args=(time, results),
-                                                  full_output=True)
+            p, cov, infodict, mesg, ier = scipy.optimize.leastsq(
+                err, p_guess, args=(time, results), full_output=True)
             self.solution['fit'] = p
             A1, A2, tau1, tau2, tau3 = p
             A3 = 1 - A1 - A2

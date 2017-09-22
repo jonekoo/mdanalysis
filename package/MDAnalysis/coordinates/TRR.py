@@ -1,47 +1,58 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver
-# Beckstein and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
 #
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
 # J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
 #
+"""
+TRR trajectory files --- :mod:`MDAnalysis.coordinates.TRR`
+==========================================================
+
+Read and write GROMACS TRR trajectories.
+
+See Also
+--------
+MDAnalysis.coordinates.XTC: Read and write GROMACS XTC trajectory files.
+MDAnalysis.coordinates.XDR: BaseReader/Writer for XDR based formats
+"""
+from __future__ import absolute_import
+
 from .XDR import XDRBaseReader, XDRBaseWriter
 from ..lib.formats.libmdaxdr import TRRFile
 from ..lib.mdamath import triclinic_vectors, triclinic_box
 
 
 class TRRWriter(XDRBaseWriter):
-    """The Gromacs TRR trajectory format is a lossless format. The TRR format can
+    """Writer for the Gromacs TRR format.
+
+    The Gromacs TRR trajectory format is a lossless format. The TRR format can
     store *velocoties* and *forces* in addition to the coordinates. It is also
     used by other Gromacs tools to store and process other data such as modes
     from a principal component analysis.
 
-    If the data dictionary of a TimeStep contains the key 'lambda' the
-    corresponding value will be used as the lambda value for written TRR file.
-    If None is found the lambda is set to 0.
-
-    Parameter
-    ---------
-    filename : str
-        filename of the trajectory
-    n_atoms : int
-        number of atoms to write
-    convert_units : bool (optional)
-        convert into MDAnalysis units
-    precision : float (optional)
-        set precision of saved trjactory to this number of decimal places.
+    If the data dictionary of a :class:`Timestep` contains the key
+    'lambda' the corresponding value will be used as the lambda value
+    for written TRR file.  If ``None`` is found the lambda is set to 0.
 
     """
 
     format = 'TRR'
+    multiframe = True
     units = {'time': 'ps', 'length': 'nm', 'velocity': 'nm/ps',
              'force': 'kJ/(mol*nm)'}
     _file = TRRFile
@@ -51,7 +62,7 @@ class TRRWriter(XDRBaseWriter):
 
         Parameters
         ----------
-        ts : TimeStep
+        ts : :class:`~base.Timestep`
 
         See Also
         --------
@@ -93,24 +104,21 @@ class TRRWriter(XDRBaseWriter):
 
 
 class TRRReader(XDRBaseReader):
-    """The Gromacs TRR trajectory format is a lossless format. The TRR format can
+    """Reader for the Gromacs TRR format.
+
+    The Gromacs TRR trajectory format is a lossless format. The TRR format can
     store *velocoties* and *forces* in addition to the coordinates. It is also
     used by other Gromacs tools to store and process other data such as modes
     from a principal component analysis.
 
-    The lambda value is written in the data dictionary of the returned TimeStep
+    The lambda value is written in the data dictionary of the returned
+    :class:`Timestep`
 
-    Parameter
-    ---------
-    filename : str
-        filename of the trajectory
-    convert_units : bool (optional)
-        convert into MDAnalysis units
-    sub : atomgroup (optional)
-        Yeah what is that exactly
-    refresh_offsets : bool (optional)
-        Recalculate offsets for random access from file. If ``False`` try to
-        retrieve offsets from hidden offsets file.
+    Notes
+    -----
+    See :ref:`Notes on offsets <offsets-label>` for more information about
+    offsets.
+
     """
     format = 'TRR'
     units = {'time': 'ps', 'length': 'nm', 'velocity': 'nm/ps',

@@ -1,13 +1,41 @@
-from six.moves import range
+# -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 fileencoding=utf-8
+#
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
+#
+# Released under the GNU Public Licence, v2 or any higher version
+#
+# Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
+from __future__ import absolute_import
+
+import pytest
+from six.moves import zip
 
 import MDAnalysis as mda
 import numpy as np
+from numpy.testing import (
+    assert_almost_equal,
+)
 
-from numpy.testing import assert_array_almost_equal, raises
+from MDAnalysis.coordinates.XYZ import XYZWriter
 
 from MDAnalysisTests.datafiles import COORDINATES_XYZ, COORDINATES_XYZ_BZ2
-from MDAnalysisTests.coordinates.base import (BaseReaderTest, BaseReference,
+from MDAnalysisTests.coordinates.base import (MultiframeReaderTest, BaseReference,
                                               BaseWriterTest)
+from MDAnalysisTests import make_Universe
 
 
 class XYZReference(BaseReference):
@@ -24,56 +52,55 @@ class XYZReference(BaseReference):
         self.container_format = True
 
 
-class TestXYZReader(BaseReaderTest):
-    def __init__(self, reference=None):
-        if reference is None:
-            reference = XYZReference()
-        super(TestXYZReader, self).__init__(reference)
+class TestXYZReader(MultiframeReaderTest):
+    @staticmethod
+    @pytest.fixture()
+    def ref():
+        return XYZReference()
 
-    @raises
     def test_double_open(self):
-        self.reader.open_trajectory()
-        self.reader.open_trajectory()
+        with pytest.raises(Exception):
+            self.reader.open_trajectory()
+            self.reader.open_trajectory()
 
 
 class TestXYZWriter(BaseWriterTest):
-    def __init__(self, reference=None):
-        if reference is None:
-            reference = XYZReference()
-        super(TestXYZWriter, self).__init__(reference)
+    @staticmethod
+    @pytest.fixture()
+    def ref():
+        return XYZReference()
 
-    @raises(ValueError)
-    def test_write_different_models_in_trajectory(self):
-        outfile = self.tmp_file('write-models-in-trajectory')
-        # n_atoms should match for each TimeStep if it was specified
-        with self.ref.writer(outfile, n_atoms=4) as w:
-            w.write(self.reader.ts)
+    def test_write_selection(self, ref, reader, tempdir):
+        uni = mda.Universe(ref.topology, ref.trajectory)
+        sel_str = 'name CA'
+        sel = uni.select_atoms(sel_str)
+        outfile = self.tmp_file('write-selection-test', ref, tempdir)
 
-    def test_write_model_container(self):
-        outfile = self.tmp_file('write-models')
-        uni = mda.Universe(self.ref.topology)
-        with self.ref.writer(outfile) as w:
-            for i in range(2, 4):
-                sel = uni.select_atoms(
-                    ' or '.join(['resid {0}'.format(j) for j
-                                 in range(1, i)]))
-                w.write(sel)
-        # how now how to check that the produced file is correct?
-        reader = self.ref.reader(outfile)
-        for i, ts in enumerate(reader):
-            sel = uni.select_atoms(' or '.join(['resid {0}'.format(j)
-                                                for j in range(1, i + 2)]))
-            assert_array_almost_equal(
-                ts._pos, sel.atoms.positions, self.ref.prec,
+        with ref.writer(outfile, sel.n_atoms) as W:
+            for ts in uni.trajectory:
+                W.write(sel.atoms)
+
+        copy = ref.reader(outfile)
+        for orig_ts, copy_ts in zip(uni.trajectory, copy):
+            assert_almost_equal(
+                copy_ts._pos, sel.atoms.positions, ref.prec,
                 err_msg="coordinate mismatch between original and written "
-                "container at frame {} ".format(ts.frame))
+                        "trajectory at frame {} (orig) vs {} (copy)".format(
+                    orig_ts.frame, copy_ts.frame))
 
-    def test_no_conversion(self):
-        outfile = self.tmp_file('write-no-conversion')
-        with self.ref.writer(outfile, convert_units=False) as w:
-            for ts in self.reader:
+    def test_write_different_models_in_trajectory(self, ref, reader, tempdir):
+        outfile = self.tmp_file('write-models-in-trajectory', ref, tempdir)
+        # n_atoms should match for each TimeStep if it was specified
+        with ref.writer(outfile, n_atoms=4) as w:
+            with pytest.raises(ValueError):
+                w.write(reader.ts)
+
+    def test_no_conversion(self, ref, reader, tempdir):
+        outfile = self.tmp_file('write-no-conversion', ref, tempdir)
+        with ref.writer(outfile, convert_units=False) as w:
+            for ts in reader:
                 w.write(ts)
-        self._check_copy(outfile)
+        self._check_copy(outfile, ref, reader)
 
 
 class XYZ_BZ_Reference(XYZReference):
@@ -84,10 +111,52 @@ class XYZ_BZ_Reference(XYZReference):
 
 
 class Test_XYZBZReader(TestXYZReader):
-    def __init__(self):
-        super(Test_XYZBZReader, self).__init__(XYZ_BZ_Reference())
+    @staticmethod
+    @pytest.fixture()
+    def ref():
+        return XYZ_BZ_Reference()
 
 
 class Test_XYZBZWriter(TestXYZWriter):
-    def __init__(self):
-        super(Test_XYZBZWriter, self).__init__(XYZ_BZ_Reference())
+    @staticmethod
+    @pytest.fixture()
+    def ref():
+        return XYZ_BZ_Reference()
+
+
+class TestXYZWriterNames(object):
+    @pytest.fixture()
+    def outfile(self, tmpdir):
+        return str(tmpdir.join('/outfile.xyz'))
+
+    def test_no_names(self, outfile):
+        u = make_Universe(trajectory=True)
+
+        w = XYZWriter(outfile)
+        w.write(u.trajectory.ts)
+        w.close()
+
+        u2 = mda.Universe(outfile)
+        assert all(u2.atoms.names == 'X')
+
+    def test_single_name(self, outfile):
+        u = make_Universe(trajectory=True)
+
+        w = XYZWriter(outfile, atoms='ABC')
+        w.write(u.trajectory.ts)
+        w.close()
+
+        u2 = mda.Universe(outfile)
+        assert all(u2.atoms.names == 'ABC')
+
+    def test_list_names(self, outfile):
+        u = make_Universe(trajectory=True)
+
+        names = ['A', 'B', 'C', 'D', 'E'] * 25
+
+        w = XYZWriter(outfile, atoms=names)
+        w.write(u.trajectory.ts)
+        w.close()
+
+        u2 = mda.Universe(outfile)
+        assert all(u2.atoms.names == names)

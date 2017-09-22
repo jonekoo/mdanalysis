@@ -1,33 +1,38 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
 # J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
 #
 
-"""
-MOL2 file format --- :mod:`MDAnalysis.coordinates.MOL2`
+"""MOL2 file format --- :mod:`MDAnalysis.coordinates.MOL2`
 ========================================================
 
-Classes to read Tripos_ molecule structure format (MOL2_)
-coordinate and topology files. Used by the DOCK_ docking
-code.
+Classes to work with Tripos_ molecule structure format (MOL2_) coordinate and
+topology files. Used, for instance, by the DOCK_ docking code.
 
-Examples
-~~~~~~~~
+
+Example for working with mol2 files
+-----------------------------------
 
 To open a mol2, remove all hydrogens and save as a new file, use the following::
 
-  u = Universe("MDAnalysis/testsuite/MDAnalysisTests/data/mol2/Molecule.mol2")
+  u = Universe("Molecule.mol2")
   gr = u.select_atoms("not name H*")
   print(len(u.atoms), len(gr))
   gr.write("Molecule_noh.mol2")
@@ -35,7 +40,77 @@ To open a mol2, remove all hydrogens and save as a new file, use the following::
 .. _MOL2: http://www.tripos.com/data/support/mol2.pdf
 .. _Tripos: http://www.tripos.com/
 .. _DOCK: http://dock.compbio.ucsf.edu/
+
+
+See Also
+--------
+rdkit: rdkit_ is an open source cheminformatics toolkit with more mol2
+       functionality
+
+.. _rdkit: http://www.rdkit.org/docs/GettingStartedInPython.html
+
+
+Classes
+-------
+
+.. autoclass:: MOL2Reader
+   :members:
+
+.. autoclass:: MOL2Writer
+   :members:
+
+
+MOL2 format notes
+-----------------
+
+* MOL2 Format Specification:  (http://www.tripos.com/data/support/mol2.pdf)
+* Example file (http://www.tripos.com/mol2/mol2_format3.html)::
+
+    #    Name: benzene
+    #    Creating user name: tom
+    #    Creation time: Wed Dec 28 00:18:30 1988
+
+    #    Modifying user name: tom
+    #    Modification time: Wed Dec 28 00:18:30 1988
+
+    @<TRIPOS>MOLECULE
+    benzene
+    12 12 1  0   0
+    SMALL
+    NO_CHARGES
+
+
+    @<TRIPOS>ATOM
+    1   C1  1.207   2.091   0.000   C.ar    1   BENZENE 0.000
+    2   C2  2.414   1.394   0.000   C.ar    1   BENZENE 0.000
+    3   C3  2.414   0.000   0.000   C.ar    1   BENZENE 0.000
+    4   C4  1.207   -0.697  0.000   C.ar    1   BENZENE 0.000
+    5   C5  0.000   0.000   0.000   C.ar    1   BENZENE 0.000
+    6   C6  0.000   1.394   0.000   C.ar    1   BENZENE 0.000
+    7   H1  1.207   3.175   0.000   H   1   BENZENE 0.000
+    8   H2  3.353   1.936   0.000   H   1   BENZENE 0.000
+    9   H3  3.353   -0.542  0.000   H   1   BENZENE 0.000
+    10  H4  1.207   -1.781  0.000   H   1   BENZENE 0.000
+    11  H5  -0.939  -0.542  0.000   H   1   BENZENE 0.000
+    12  H6  -0.939  1.936   0.000   H   1   BENZENE 0.000
+    @<TRIPOS>BOND
+    1   1   2   ar
+    2   1   6   ar
+    3   2   3   ar
+    4   3   4   ar
+    5   4   5   ar
+    6   5   6   ar
+    7   1   7   1
+    8   2   8   1
+    9   3   9   1
+    10  4   10  1
+    11  5   11  1
+    12  6   12  1
+   @<TRIPOS>SUBSTRUCTURE
+    1   BENZENE 1   PERM    0   ****    ****    0   ROOT
+
 """
+from __future__ import absolute_import
 
 import numpy as np
 
@@ -44,19 +119,26 @@ from ..core import flags
 from ..lib import util
 
 
-class MOL2Reader(base.Reader):
+class MOL2Reader(base.ReaderBase):
     """Reader for MOL2 structure format.
 
     .. versionchanged:: 0.11.0
-       Frames now 0-based instead of 1-based
-       MOL2 now resuses the same Timestep object for every frame
-       previously created a new instance of Timestep each frame
+       Frames now 0-based instead of 1-based.
+       MOL2 now reuses the same Timestep object for every frame,
+       previously created a new instance of Timestep each frame.
     """
     format = 'MOL2'
     units = {'time': None, 'length': 'Angstrom'}
 
     def __init__(self, filename, **kwargs):
-        """Read coordinates from *filename*."""
+        """Read coordinates from `filename`.
+
+
+        Parameters
+        ----------
+        filename : str or NamedStream
+             name of the mol2 file or stream
+        """
         super(MOL2Reader, self).__init__(filename, **kwargs)
 
         self.n_atoms = None
@@ -158,56 +240,30 @@ class MOL2Reader(base.Reader):
         self.ts.frame = -1
 
 
-class MOL2Writer(base.Writer):
-    """MOL2Writer Limitations ----------- MOL2Writer can only be used to write out previously loaded MOL2 files.  If you're trying to convert, for example, a PDB file to MOL you should use other tools, like rdkit (http://www.rdkit.org/docs/GettingStartedInPython.html).  Here is an example how to use rdkit to convert a PDB to MOL:: from rdkit import Chem mol = Chem.MolFromPDBFile("molecule.pdb", removeHs=False) Chem.MolToMolFile(mol, "molecule.mol" ) MOL2 writer is currently not available for rdkit master. It requires 
-    SYBYL atomtype generation.
-    See page 7 for list of SYBYL atomtypes (http://tripos.com/tripos_resources/fileroot/pdfs/mol2_format2.pdf).
+class MOL2Writer(base.WriterBase):
+    """mol2 format writer
 
-    * MOL2 Format Specification:  (http://www.tripos.com/data/support/mol2.pdf)
-    * Example file (http://www.tripos.com/mol2/mol2_format3.html)::
+    Write a file in the Tripos_ molecule structure format (MOL2_).
 
-              #    Name: benzene 
-              #    Creating user name: tom 
-              #    Creation time: Wed Dec 28 00:18:30 1988 
-            
-              #    Modifying user name: tom 
-              #    Modification time: Wed Dec 28 00:18:30 1988 
-            
-              @<TRIPOS>MOLECULE 
-              benzene 
-              12 12 1  0   0 
-              SMALL 
-              NO_CHARGES 
-             
-             
-              @<TRIPOS>ATOM 
-              1   C1  1.207   2.091   0.000   C.ar    1   BENZENE 0.000 
-              2   C2  2.414   1.394   0.000   C.ar    1   BENZENE 0.000 
-              3   C3  2.414   0.000   0.000   C.ar    1   BENZENE 0.000 
-              4   C4  1.207   -0.697  0.000   C.ar    1   BENZENE 0.000 
-              5   C5  0.000   0.000   0.000   C.ar    1   BENZENE 0.000 
-              6   C6  0.000   1.394   0.000   C.ar    1   BENZENE 0.000 
-              7   H1  1.207   3.175   0.000   H   1   BENZENE 0.000 
-              8   H2  3.353   1.936   0.000   H   1   BENZENE 0.000 
-              9   H3  3.353   -0.542  0.000   H   1   BENZENE 0.000 
-              10  H4  1.207   -1.781  0.000   H   1   BENZENE 0.000 
-              11  H5  -0.939  -0.542  0.000   H   1   BENZENE 0.000 
-              12  H6  -0.939  1.936   0.000   H   1   BENZENE 0.000 
-              @<TRIPOS>BOND 
-              1   1   2   ar 
-              2   1   6   ar 
-              3   2   3   ar 
-              4   3   4   ar 
-              5   4   5   ar 
-              6   5   6   ar 
-              7   1   7   1 
-              8   2   8   1 
-              9   3   9   1 
-              10  4   10  1 
-              11  5   11  1 
-              12  6   12  1 
-             @<TRIPOS>SUBSTRUCTURE 
-              1   BENZENE 1   PERM    0   ****    ****    0   ROOT
+    Note
+    ----
+    :class:`MOL2Writer` can only be used to write out previously loaded MOL2 files.
+    If you're trying to convert, for example, a PDB file to MOL you should
+    use other tools, like rdkit_.
+
+    Here is an example how to use rdkit_ to convert a PDB to MOL::
+
+      from rdkit import Chem
+      mol = Chem.MolFromPDBFile("molecule.pdb", removeHs=False)
+      Chem.MolToMolFile(mol, "molecule.mol" )
+
+    MOL2 writer is currently not available for rdkit master. It requires SYBYL
+    atomtype generation.
+    See page 7 for list of SYBYL atomtypes
+    (http://tripos.com/tripos_resources/fileroot/pdfs/mol2_format2.pdf).
+
+
+    .. _rdkit: http://www.rdkit.org/docs/GettingStartedInPython.html
 
     .. versionchanged:: 0.11.0
        Frames now 0-based instead of 1-based
@@ -217,16 +273,16 @@ class MOL2Writer(base.Writer):
     multiframe = True
     units = {'time': None, 'length': 'Angstrom'}
 
-    def __init__(self, filename, n_atoms=None,
-                 convert_units=None):
+    def __init__(self, filename, n_atoms=None, convert_units=None):
         """Create a new MOL2Writer
 
-        :Arguments:
-         *filename*
-           name of output file
-         *convert_units*
-           units are converted to the MDAnalysis base format; ``None`` selects
-           the value of :data:`MDAnalysis.core.flags` ['convert_lengths']
+        Parameters
+        ----------
+        filename: str
+            name of output file
+        convert_units: bool (optional)
+            units are converted to the MDAnalysis base format; ``None`` selects
+            the value of :data:`MDAnalysis.core.flags` ['convert_lengths']
         """
         self.filename = filename
         if convert_units is None:
@@ -248,6 +304,12 @@ class MOL2Writer(base.Writer):
         """
         traj = obj.universe.trajectory
         ts = traj.ts
+
+        try:
+            molecule = ts.data['molecule']
+        except KeyError:
+            raise NotImplementedError(
+                "MOL2Writer cannot currently write non MOL2 data")
 
         # Need to remap atom indices to 1 based in this selection
         mapping = {a: i for i, a in enumerate(obj.atoms, start=1)}
@@ -288,7 +350,6 @@ class MOL2Writer(base.Writer):
         except KeyError:
             substructure = ""
 
-        molecule = ts.data['molecule']
         check_sums = molecule[1].split()
         check_sums[0], check_sums[1] = str(len(obj.atoms)), str(len(bondgroup))
         molecule[1] = "{0}\n".format(" ".join(check_sums))

@@ -1,40 +1,46 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver
-# Beckstein and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
-
-
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
 # J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
 #
-"""
-AMBER trajectories --- :mod:`MDAnalysis.coordinates.TRJ`
+"""AMBER trajectories --- :mod:`MDAnalysis.coordinates.TRJ`
 ========================================================
 
 AMBER_ can write :ref:`ASCII trajectories<ascii-trajectories>` ("traj") and
 :ref:`binary trajectories<netcdf-trajectories>` ("netcdf"). MDAnalysis supports
 reading of both formats and writing for the binary trajectories.
 
-.. Note::
+Note
+----
+Support for AMBER is still somewhat *experimental* and feedback and
+contributions are highly appreciated. Use the `Issue Tracker`_ or get in touch
+on the `MDAnalysis mailinglist`_.
 
-   Support for AMBER is *experimental* and feedback and contributions
-   are highly appreciated. Use the `Issue Tracker`_ or get in touch on
-   the `MDAnalysis mailinglist`_.
 
 .. rubric:: Units
+
+AMBER trajectories are assumed to be in the following units:
 
 * lengths in Angstrom (Å)
 * time in ps (but see below)
 
-AMBER trajectory coordinate frames are based on a :class:`Timestep`
+AMBER trajectory coordinate frames are based on a custom :class:`Timestep`
 object.
 
 .. autoclass:: Timestep
@@ -123,8 +129,6 @@ those and will raise a :exc:`NotImplementedError` if anything else is detected.
 .. _Issue Tracker: https://github.com/MDAnalysis/mdanalysis/issues
 .. _MDAnalysis mailinglist: http://groups.google.com/group/mdnalysis-discussion
 
-
-
 """
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
@@ -141,24 +145,19 @@ from ..lib import util
 
 logger = logging.getLogger("MDAnalysis.coordinates.AMBER")
 
-try:
-    import netCDF4 as netcdf
-except ImportError:
-    # Just to notify the user; the module will still load. However, NCDFReader
-    # and NCDFWriter will raise a proper ImportError if they are called without
-    # the netCDF4 library present. See Issue 122 for a discussion.
-    logger.debug(
-        "Failed to import netCDF4; AMBER NETCDFReader/Writer will not work. "
-        "Install netCDF4 from https://github.com/Unidata/netcdf4-python.")
-    logger.debug(
-        "See also https://github.com/MDAnalysis/mdanalysis/wiki/netcdf")
+import scipy.io.netcdf
 
+try:
+    import netCDF4
+except ImportError:
+    netCDF4 = None
+    logger.warning("netCDF4 is not available. Writing AMBER ncdf files will be slow.")
 
 class Timestep(base.Timestep):
     """AMBER trajectory Timestep.
 
-    The Timestep can be initialized with *arg* being an integer
-    (the number of atoms) and an optional keyword argument *velocities* to
+    The Timestep can be initialized with `arg` being an integer
+    (the number of atoms) and an optional keyword argument `velocities` to
     allocate space for both coordinates and velocities;
 
     .. versionchanged:: 0.10.0
@@ -167,7 +166,7 @@ class Timestep(base.Timestep):
     order = 'C'
 
 
-class TRJReader(base.Reader):
+class TRJReader(base.ReaderBase):
     """AMBER trajectory reader.
 
     Reads the ASCII formatted `AMBER TRJ format`_. Periodic box information
@@ -188,8 +187,8 @@ class TRJReader(base.Reader):
     .. _AMBER TRJ format: http://ambermd.org/formats.html#trajectory
 
     .. versionchanged:: 0.11.0
-       Frames now 0-based instead of 1-based
-       kwarg 'delta' renamed to 'dt', for uniformity with other Readers
+       Frames now 0-based instead of 1-based.
+       kwarg `delta` renamed to `dt`, for uniformity with other Readers
     """
     format = ['TRJ', 'MDCRD', 'CRDBOX']
     units = {'time': 'ps', 'length': 'Angstrom'}
@@ -221,11 +220,17 @@ class TRJReader(base.Reader):
         self.box_line_parser = util.FORTRANReader("3F8.3")
 
         # Now check for box
-        self.periodic = False
         self._detect_amber_box()
 
         # open file, read first frame
         self._read_next_timestep()
+
+    def _read_frame(self, frame):
+        if self.trjfile is None:
+            self.open_trajectory()
+        self.trjfile.seek(self._offsets[frame])
+        self.ts.frame = frame - 1  # gets +1'd in _read_next
+        return self._read_next_timestep()
 
     def _read_next_timestep(self):
         # FORMAT(10F8.3)  (X(i), Y(i), Z(i), i=1,NATOM)
@@ -283,7 +288,8 @@ class TRJReader(base.Reader):
          - this WILL fail if we have exactly 1 atom in the trajectory because
            there's no way to distinguish the coordinates from the box
            so for 1 atom we always assume no box
-         XXX: needs a Timestep that knows about AMBER unitcells!
+
+        .. TODO:: needs a Timestep that knows about AMBER unitcells!
         """
         if self.n_atoms == 1:
             # for 1 atom we cannot detect the box with the current approach
@@ -322,17 +328,21 @@ class TRJReader(base.Reader):
             return self._n_frames
 
     def _read_trj_n_frames(self, filename):
-        self._reopen()
+        lpf = self.lines_per_frame
+        if self.periodic:
+            lpf += 1
 
+        self._offsets = offsets = []
         counter = 0
-        try:
-            while True:
-                next(self)
+        with util.openany(self.filename) as f:
+            line = f.readline()  # ignore first line
+            while line:
+                if counter % lpf == 0:
+                    offsets.append(f.tell())
+                line = f.readline()
                 counter += 1
-        except EOFError:
-            self.rewind()
-
-        return counter
+        offsets.pop()  # last offset is EOF
+        return len(offsets)
 
     @property
     def n_atoms(self):
@@ -344,7 +354,7 @@ class TRJReader(base.Reader):
 
     def open_trajectory(self):
         """Open the trajectory for reading and load first frame."""
-        self.trjfile = util.anyopen(self.filename, 'r')
+        self.trjfile = util.anyopen(self.filename)
         self.header = self.trjfile.readline()  # ignore first line
         if len(self.header.rstrip()) > 80:
             # Chimera uses this check
@@ -364,19 +374,14 @@ class TRJReader(base.Reader):
         self.trjfile.close()
         self.trjfile = None
 
-    def rewind(self):
-        """Reposition at the beginning of the trajectory"""
-        self._reopen()
-        next(self)
 
-
-class NCDFReader(base.Reader):
+class NCDFReader(base.ReaderBase):
     """Reader for `AMBER NETCDF format`_ (version 1.0).
 
     AMBER binary trajectories are automatically recognised by the
     file extension ".ncdf".
 
-    The number of atoms (*n_atoms*) does not have to be provided as it can
+    The number of atoms (`n_atoms`) does not have to be provided as it can
     be read from the trajectory. The trajectory reader can randomly access
     frames and therefore supports direct indexing (with 0-based frame
     indices) and full-feature trajectory iteration, including slicing.
@@ -397,16 +402,30 @@ class NCDFReader(base.Reader):
     * only trajectories with time in ps and lengths in Angstroem are processed
     * scale_factors are not supported (and not checked)
 
+    The NCDF reader uses :mod:`scipy.io.netcdf` and therefore :mod:`scipy` must
+    be installed. It supports the *mmap* keyword argument (when reading):
+    ``mmap=True`` is memory efficient and directly maps the trajectory on disk
+    to memory; ``mmap=False`` may consume large amounts of memory because it
+    loads the whole trajectory into memory but it might be faster. The default
+    is ``mmap=None`` and then default behavior of
+    :class:`scipy.io.netcdf.netcdf_file` prevails, i.e. ``True`` when
+    *filename* is a file name, ``False`` when *filename* is a file-like object.
+
     .. _AMBER NETCDF format: http://ambermd.org/netcdf/nctraj.html
 
-    .. SeeAlso:: :class:`NCDFWriter`
+    See Also
+    --------
+    :class:`NCDFWriter`
+
 
     .. versionadded: 0.7.6
     .. versionchanged:: 0.10.0
        Added ability to read Forces
     .. versionchanged:: 0.11.0
-       Frame labels now 0-based instead of 1-based
-       kwarg 'delta' renamed to 'dt', for uniformity with other Readers
+       Frame labels now 0-based instead of 1-based.
+       kwarg `delta` renamed to `dt`, for uniformity with other Readers.
+    .. versionchanged:: 0.17.0
+       Uses :mod:`scipy.io.netcdf` and supports the *mmap* kwarg.
     """
 
     format = ['NCDF', 'NC']
@@ -419,40 +438,37 @@ class NCDFReader(base.Reader):
     _Timestep = Timestep
 
     def __init__(self, filename, n_atoms=None, **kwargs):
-        try:
-            import netCDF4 as netcdf
-        except ImportError:
-            errmsg = ("netCDF4 package missing.\n"
-                      "netcdf4-python with the netCDF and HDF5 libraries must"
-                      " be installed for the AMBER ncdf Reader.\n"
-                      "See installation instructions at "
-                      "https://github.com/MDAnalysis/mdanalysis/wiki/netcdf")
-            logger.fatal(errmsg)
-            raise ImportError(errmsg)
+        self._mmap = kwargs.pop('mmap', None)
 
         super(NCDFReader, self).__init__(filename, **kwargs)
 
-        self.trjfile = netcdf.Dataset(self.filename)
+        self.trjfile = scipy.io.netcdf.netcdf_file(self.filename,
+                                                   mmap=self._mmap)
 
-        if not ('AMBER' in self.trjfile.Conventions.split(',') or
-                'AMBER' in self.trjfile.Conventions.split()):
+        if not ('AMBER' in self.trjfile.Conventions.decode('utf-8').split(',') or
+                'AMBER' in self.trjfile.Conventions.decode('utf-8').split()):
             errmsg = ("NCDF trajectory {0} does not conform to AMBER "
                       "specifications, http://ambermd.org/netcdf/nctraj.html "
                       "('AMBER' must be one of the tokens in attribute "
                       "Conventions)".format(self.filename))
             logger.fatal(errmsg)
             raise TypeError(errmsg)
-        if not self.trjfile.ConventionVersion == self.version:
+        if not self.trjfile.ConventionVersion.decode('utf-8') == self.version:
             wmsg = ("NCDF trajectory format is {0!s} but the reader "
                     "implements format {1!s}".format(
                         self.trjfile.ConventionVersion, self.version))
             warnings.warn(wmsg)
-            logger.warn(wmsg)
+            logger.warning(wmsg)
 
-        self.n_atoms = len(self.trjfile.dimensions['atom'])
-        self.n_frames = len(self.trjfile.dimensions['frame'])
-        # also records time steps in data.variables['time'] and unit
-        # but my example only has 0
+        self.n_atoms = self.trjfile.dimensions['atom']
+        self.n_frames = self.trjfile.dimensions['frame']
+        # example trajectory when read with scipy.io.netcdf has
+        # dimensions['frame'] == None (indicating a record dimension that can
+        # grow) whereas if read with netCDF4 I get len(dimensions['frame']) ==
+        # 10: in any case, we need to get the number of frames from somewhere
+        # such as the time variable:
+        if self.n_frames is None:
+            self.n_frames = self.trjfile.variables['time'].shape[0]
 
         try:
             self.remarks = self.trjfile.title
@@ -466,24 +482,22 @@ class NCDFReader(base.Reader):
 
         # checks for not-implemented features (other units would need to be
         # hacked into MDAnalysis.units)
-        if self.trjfile.variables['time'].units != "picosecond":
+        if self.trjfile.variables['time'].units.decode('utf-8') != "picosecond":
             raise NotImplementedError(
-                "NETCDFReader currently assumes that the trajectory was "
-                "written with a time unit of picoseconds and "
-                "not {0}.".format(self.trjfile.variables['time'].units))
-        if self.trjfile.variables['coordinates'].units != "angstrom":
+                "NETCDFReader currently assumes that the trajectory was written "
+                "with a time unit of picoseconds and not {0}.".format(
+                    self.trjfile.variables['time'].units))
+        if self.trjfile.variables['coordinates'].units.decode('utf-8') != "angstrom":
             raise NotImplementedError(
-                "NETCDFReader currently assumes that the trajectory was "
-                "written with a length unit of Angstroem and "
-                "not {0}.".format(self.trjfile.variables['coordinates'].units))
+                "NETCDFReader currently assumes that the trajectory was written "
+                "with a length unit of Angstroem and not {0}.".format(
+                    self.trjfile.variables['coordinates'].units))
         if hasattr(self.trjfile.variables['coordinates'], 'scale_factor'):
             raise NotImplementedError("scale_factors are not implemented")
-        if n_atoms is not None:
-            if n_atoms != self.n_atoms:
-                raise ValueError(
-                    "Supplied n_atoms ({0}) != natom from ncdf ({1}). Note: "
-                    "n_atoms can be None and then the ncdf value is used!"
-                    "".format(n_atoms, self.n_atoms))
+        if n_atoms is not None and n_atoms != self.n_atoms:
+            raise ValueError("Supplied n_atoms ({0}) != natom from ncdf ({1}). "
+                             "Note: n_atoms can be None and then the ncdf value "
+                             "is used!".format(n_atoms, self.n_atoms))
 
         self.has_velocities = 'velocities' in self.trjfile.variables
         self.has_forces = 'forces' in self.trjfile.variables
@@ -505,9 +519,12 @@ class NCDFReader(base.Reader):
 
         if self.trjfile is None:
             raise IOError("Trajectory is closed")
+        if np.dtype(type(frame)) != np.dtype(int):
+            # convention... for netcdf could also be a slice
+            raise TypeError("frame must be a positive integer or zero")
         if frame >= self.n_frames or frame < 0:
-            raise IndexError("frame index must be 0 <= frame < {0}"
-                             "".format(self.n_frames))
+            raise IndexError("frame index must be 0 <= frame < {0}".format(
+                self.n_frames))
         # note: self.trjfile.variables['coordinates'].shape == (frames, n_atoms, 3)
         ts._pos[:] = self.trjfile.variables['coordinates'][frame]
         ts.time = self.trjfile.variables['time'][frame]
@@ -551,28 +568,35 @@ class NCDFReader(base.Reader):
         return t1 - t0
 
     def close(self):
-        """Close trajectory; any further access will raise an :exc:`IOError`"""
+        """Close trajectory; any further access will raise an :exc:`IOError`.
+
+        .. Note:: The underlying :mod:`scipy.io.netcdf` module open netcdf
+                  files with `mmap()`. Hence *any* reference to an array
+                  *must* be removed before the file can be closed.
+        """
         if self.trjfile is not None:
             self.trjfile.close()
             self.trjfile = None
 
     def Writer(self, filename, **kwargs):
-        """Returns a NCDFWriter for *filename* with the same parameters as this NCDF.
+        """Returns a NCDFWriter for `filename` with the same parameters as this NCDF.
 
         All values can be changed through keyword arguments.
 
-        :Arguments:
-          *filename*
-              filename of the output NCDF trajectory
-        :Keywords:
-          *n_atoms*
-              number of atoms
-          *dt*
-              length of one timestep in picoseconds
-          *remarks*
-              string that is stored in the title field
+        Parameters
+        ----------
+        filename : str
+            filename of the output NCDF trajectory
+        n_atoms : int (optional)
+            number of atoms
+        dt : float (optional)
+            length of one timestep in picoseconds
+        remarks : str (optional)
+            string that is stored in the title field
 
-        :Returns: :class:`NCDFWriter`
+        Returns
+        -------
+        :class:`NCDFWriter`
         """
         n_atoms = kwargs.pop('n_atoms', self.n_atoms)
         kwargs.setdefault('remarks', self.remarks)
@@ -580,7 +604,7 @@ class NCDFReader(base.Reader):
         return NCDFWriter(filename, n_atoms, **kwargs)
 
 
-class NCDFWriter(base.Writer):
+class NCDFWriter(base.WriterBase):
     """Writer for `AMBER NETCDF format`_ (version 1.0).
 
     AMBER binary trajectories are automatically recognised by the
@@ -595,17 +619,88 @@ class NCDFWriter(base.Writer):
 
     .. _AMBER NETCDF format: http://ambermd.org/netcdf/nctraj.html
 
-    .. SeeAlso:: :class:`NCDFReader`
+
+    Parameters
+    ----------
+    filename : str
+        name of output file
+    n_atoms : int
+        number of atoms in trajectory file
+    start : int (optional)
+        starting timestep
+    step : int (optional)
+        skip between subsequent timesteps
+    dt : float (optional)
+        timestep
+    convert_units : bool (optional)
+        ``True``: units are converted to the AMBER base format; ``None``
+        selects the value of :data:`MDAnalysis.core.flags`
+        ['convert_lengths'] (see :ref:`flags-label`).
+    velocities : bool (optional)
+        Write velocities into the trajectory [``False``]
+    forces : bool (optional)
+        Write forces into the trajectory [``False``]
+
+
+    Note
+    ----
+    MDAnalysis uses :mod:`scipy.io.netcdf` to access Amber files, which are in
+    netcdf 3 format. Although :mod:`scipy.io.netcdf` is very fast at reading
+    these files, it is *very* slow when writing, and it becomes slower the
+    longer the files are. On the other hand, the netCDF4_ package (which
+    requires the compiled netcdf library to be installed) is fast at writing
+    but slow at reading. Therefore, we try to use :mod:`netCDF4` for writing if
+    available but otherwise fall back to the slower :mod:`scipy.io.netcdf`.
+
+    **Amber users** might have a hard time getting netCDF4 to work with a
+    conda-based installation (as discussed in `Issue #506`_) because of the way
+    that Amber itself handles netcdf: When the Amber environment is loaded, the
+    following can happen when trying to import netCDF4::
+
+      >>> import netCDF4
+      Traceback (most recent call last):
+        File "<string>", line 1, in <module>
+        File "/scratch2/miniconda/envs/py35/lib/python3.5/site-packages/netCDF4/__init__.py", line 3, in <module>
+          from ._netCDF4 import *
+      ImportError: /scratch2/miniconda/envs/py35/lib/python3.5/site-packages/netCDF4/_netCDF4.cpython-35m-x86_64-linux-gnu.so: undefined symbol: nc_inq_var_fletcher32
+
+    The reason for this (figured out via :program:`ldd`) is that Amber builds
+    its own NetCDF library that it now inserts into :envvar:`LD_LIBRARY_PATH`
+    *without the NetCDF4 API and HDF5 bindings*. Since the conda version of
+    :mod:`netCDF4` was built against the full NetCDF package, the one
+    :program:`ld` tries to link to at runtime (because Amber requires
+    :envvar:`LD_LIBRARY_PATH`) is missing some symbols. Removing Amber from the
+    environment fixes the import but is not really a convenient solution for
+    users of Amber.
+
+    At the moment there is no obvious solution if one wants to use
+    :mod:`netCDF4` and Amber in the same shell session. If you need the fast
+    writing capabilities of :mod:`netCDF4` then you need to unload your Amber
+    environment before importing MDAnalysis.
+
+
+    .. _netCDF4: https://unidata.github.io/netcdf4-python/
+    .. _`Issue #506`:
+       https://github.com/MDAnalysis/mdanalysis/issues/506#issuecomment-225081416
+
+    See Also
+    --------
+    :class:`NCDFReader`
+
 
     .. versionadded: 0.7.6
-
     .. versionchanged:: 0.10.0
        Added ability to write velocities and forces
     .. versionchanged:: 0.11.0
-       kwarg 'delta' renamed to 'dt', for uniformity with other Readers
+       kwarg `delta` renamed to `dt`, for uniformity with other Readers
+    .. versionchanged:: 0.17.0
+       Use fast :mod:`netCDF4` for writing but fall back to slow
+       :mod:`scipy.io.netcdf` if :mod:`netCDF4` is not available.
+
     """
 
     format = 'NCDF'
+    multiframe = True
     version = "1.0"
     units = {'time': 'ps',
              'length': 'Angstrom',
@@ -620,37 +715,7 @@ class NCDFWriter(base.Writer):
                  dt=1.0,
                  remarks=None,
                  convert_units=None,
-                 zlib=False,
-                 cmplevel=1,
                  **kwargs):
-        """Create a new NCDFWriter
-
-        :Arguments:
-         *filename*
-            name of output file
-         *n_atoms*
-            number of atoms in trajectory file
-
-        :Keywords:
-          *start*
-            starting timestep
-          *step*
-            skip between subsequent timesteps
-          *dt*
-            timestep
-          *convert_units*
-            ``True``: units are converted to the AMBER base format; ``None``
-            selects the value of :data:`MDAnalysis.core.flags`
-            ['convert_lengths'] (see :ref:`flags-label`).
-          *zlib*
-            compress data [``False``]
-          *cmplevel*
-            compression level (1-9) [1]
-          *velocities*
-            Write velocities into the trajectory [``False``]
-          *forces*
-            Write forces into the trajectory [``False``]
-        """
         self.filename = filename
         if n_atoms == 0:
             raise ValueError("NCDFWriter: no atoms in output trajectory")
@@ -664,9 +729,6 @@ class NCDFWriter(base.Writer):
         self.step = step  # do we use those?
         self.dt = dt
         self.remarks = remarks or "AMBER NetCDF format (MDAnalysis.coordinates.trj.NCDFWriter)"
-
-        self.zlib = zlib
-        self.cmplevel = cmplevel
 
         self.ts = None  # when/why would this be assigned??
         self._first_frame = True  # signals to open trajectory
@@ -684,36 +746,32 @@ class NCDFWriter(base.Writer):
         output should contain periodicity information (i.e. the unit
         cell dimensions).
 
-        Based on Joshua Adelman's `netcdf4storage.py`_ in `Issue 109`_.
+        Based on Joshua Adelman's `netcdf4storage.py`_ in `Issue 109`_ and uses
+        Jason Swail's hack from `ParmEd/ParmEd#722`_ to switch between
+        :mod:`scipy.io.netcdf` and :mod:`netCDF4`.
 
         .. _`Issue 109`:
            https://github.com/MDAnalysis/mdanalysis/issues/109
         .. _`netcdf4storage.py`:
            https://storage.googleapis.com/google-code-attachments/mdanalysis/issue-109/comment-2/netcdf4storage.py
-        """
-        try:
-            import netCDF4 as netcdf
-        except ImportError:
-            logger.fatal("netcdf4-python with the netCDF and HDF5 libraries "
-                         "must be installed for the AMBER ncdf Writer."
-                         "See installation instructions at "
-                         "https://github.com/MDAnalysis/mdanalysis/wiki/netcdf")
-            raise ImportError(
-                "netCDF4 package missing.\n"
-                "netcdf4-python with the netCDF and HDF5 libraries must be "
-                "installed for the AMBER ncdf Writer.\n"
-                "See installation instructions at "
-                "https://github.com/MDAnalysis/mdanalysis/wiki/netcdf")
+        .. _`ParmEd/ParmEd#722`: https://github.com/ParmEd/ParmEd/pull/722
 
+        """
         if not self._first_frame:
             raise IOError(
                 errno.EIO,
                 "Attempt to write to closed file {0}".format(self.filename))
 
-        ncfile = netcdf.Dataset(self.filename,
-                                clobber=True,
-                                mode='w',
-                                format='NETCDF3_64BIT')
+        if netCDF4:
+            ncfile = netCDF4.Dataset(self.filename, 'w', format='NETCDF3_64BIT')
+        else:
+            ncfile = scipy.io.netcdf.netcdf_file(self.filename,
+                                                 mode='w', version=2,
+                                                 mmap=False)
+            wmsg = "Could not find netCDF4 module. Falling back to MUCH slower "\
+                   "scipy.io.netcdf implementation for writing."
+            logger.warning(wmsg)
+            warnings.warn(wmsg)
 
         # Set global attributes.
         setattr(ncfile, 'program', 'MDAnalysis.coordinates.TRJ.NCDFWriter')
@@ -733,39 +791,28 @@ class NCDFWriter(base.Writer):
         ncfile.createDimension('label', 5)  # needed for cell_angular
 
         # Create variables.
-        coords = ncfile.createVariable('coordinates',
-                                       'f4', ('frame', 'atom', 'spatial'),
-                                       zlib=self.zlib,
-                                       complevel=self.cmplevel)
+        coords = ncfile.createVariable('coordinates', 'f4',
+                                       ('frame', 'atom', 'spatial'))
         setattr(coords, 'units', 'angstrom')
 
         spatial = ncfile.createVariable('spatial', 'c', ('spatial', ))
         spatial[:] = np.asarray(list('xyz'))
 
-        time = ncfile.createVariable('time',
-                                     'f4', ('frame', ),
-                                     zlib=self.zlib,
-                                     complevel=self.cmplevel)
+        time = ncfile.createVariable('time', 'f4', ('frame',))
         setattr(time, 'units', 'picosecond')
 
         self.periodic = periodic
         if self.periodic:
-            cell_lengths = ncfile.createVariable('cell_lengths',
-                                                 'f8',
-                                                 ('frame', 'cell_spatial'),
-                                                 zlib=self.zlib,
-                                                 complevel=self.cmplevel)
+            cell_lengths = ncfile.createVariable('cell_lengths', 'f8',
+                                                 ('frame', 'cell_spatial'))
             setattr(cell_lengths, 'units', 'angstrom')
 
             cell_spatial = ncfile.createVariable('cell_spatial', 'c',
                                                  ('cell_spatial', ))
             cell_spatial[:] = np.asarray(list('abc'))
 
-            cell_angles = ncfile.createVariable('cell_angles',
-                                                'f8',
-                                                ('frame', 'cell_angular'),
-                                                zlib=self.zlib,
-                                                complevel=self.cmplevel)
+            cell_angles = ncfile.createVariable('cell_angles', 'f8',
+                                                ('frame', 'cell_angular'))
             setattr(cell_angles, 'units', 'degrees')
 
             cell_angular = ncfile.createVariable('cell_angular', 'c',
@@ -775,16 +822,12 @@ class NCDFWriter(base.Writer):
 
         # These properties are optional, and are specified on Writer creation
         if self.has_velocities:
-            velocs = ncfile.createVariable('velocities',
-                                           'f8', ('frame', 'atom', 'spatial'),
-                                           zlib=self.zlib,
-                                           complevel=self.cmplevel)
+            velocs = ncfile.createVariable('velocities', 'f4',
+                                           ('frame', 'atom', 'spatial'))
             setattr(velocs, 'units', 'angstrom/picosecond')
         if self.has_forces:
-            forces = ncfile.createVariable('forces',
-                                           'f8', ('frame', 'atom', 'spatial'),
-                                           zlib=self.zlib,
-                                           complevel=self.cmplevel)
+            forces = ncfile.createVariable('forces', 'f4',
+                                           ('frame', 'atom', 'spatial'))
             setattr(forces, 'units', 'kilocalorie/mole/angstrom')
 
         ncfile.sync()
@@ -792,25 +835,40 @@ class NCDFWriter(base.Writer):
         self.trjfile = ncfile
 
     def is_periodic(self, ts=None):
-        """Return ``True`` if :class:`Timestep` *ts* contains a valid
-        simulation box
+        """Test if `Timestep` contains a periodic trajectory.
+
+        Parameters
+        ----------
+        ts : :class:`Timestep`
+             :class:`Timestep` instance containing coordinates to
+             be written to trajectory file; default is the current
+             timestep
+
+        Returns
+        -------
+        bool
+            Return ``True`` if `ts` contains a valid simulation box
         """
         ts = ts if ts is not None else self.ts
         return np.all(ts.dimensions > 0)
 
     def write_next_timestep(self, ts=None):
-        '''write a new timestep to the trj file
+        """write a new timestep to the trj file
 
-        *ts* is a :class:`Timestep` instance containing coordinates to
-        be written to trajectory file
-        '''
+        Parameters
+        ----------
+        ts : :class:`Timestep`
+             :class:`Timestep` instance containing coordinates to
+             be written to trajectory file; default is the current
+             timestep
+        """
         if ts is None:
-            if not hasattr(self, "ts") or self.ts is None:
-                raise IOError(
-                    "NCDFWriter: no coordinate data to write to trajectory file")
-            else:
-                ts = self.ts  # self.ts would have to be assigned manually!
-        elif ts.n_atoms != self.n_atoms:
+            ts = self.ts
+        if ts is None:
+            raise IOError(
+                "NCDFWriter: no coordinate data to write to trajectory file")
+
+        if ts.n_atoms != self.n_atoms:
             raise IOError(
                 "NCDFWriter: Timestep does not have the correct number of atoms")
 
@@ -834,7 +892,9 @@ class NCDFWriter(base.Writer):
         .. _`netcdf4storage.py`:
            https://storage.googleapis.com/google-code-attachments/mdanalysis/issue-109/comment-2/netcdf4storage.py
         """
-        assert self.trjfile is not None, "trjfile must be open in order to write to it"
+        pos = ts._pos
+        time = ts.time
+        unitcell = ts.dimensions
 
         if self.convert_units:
             # make a copy of the scaled positions so that the in-memory
@@ -843,18 +903,9 @@ class NCDFWriter(base.Writer):
             # implementation could lead to memory problems and/or slow-down for
             # very big systems because we temporarily create a new array pos
             # for each frame written
-            pos = self.convert_pos_to_native(ts._pos, inplace=False)
-            try:
-                time = self.convert_time_to_native(ts.time, inplace=False)
-            except AttributeError:
-                time = ts.frame * self.convert_time_to_native(self.dt,
-                                                              inplace=False)
+            pos = self.convert_pos_to_native(pos, inplace=False)
+            time = self.convert_time_to_native(time, inplace=False)
             unitcell = self.convert_dimensions_to_unitcell(ts)
-        else:
-            pos = ts._pos
-            time = ts.time
-
-            unitcell = ts.dimensions
 
         # write step
         self.trjfile.variables['coordinates'][self.curr_frame, :, :] = pos
@@ -864,21 +915,21 @@ class NCDFWriter(base.Writer):
                 self.curr_frame, :] = unitcell[:3]
             self.trjfile.variables['cell_angles'][
                 self.curr_frame, :] = unitcell[3:]
+
         if self.has_velocities:
+            velocities = ts._velocities
             if self.convert_units:
-                velocities = self.convert_velocities_to_native(ts._velocities,
-                                                               inplace=False)
-            else:
-                velocities = ts._velocities
-            self.trjfile.variables['velocities'][
-                self.curr_frame, :, :] = velocities
+                velocities = self.convert_velocities_to_native(
+                    velocities, inplace=False)
+            self.trjfile.variables['velocities'][self.curr_frame, :, :] = velocities
+
         if self.has_forces:
+            forces = ts._forces
             if self.convert_units:
-                forces = self.convert_forces_to_native(ts._forces,
-                                                       inplace=False)
-            else:
-                forces = ts._velocities
+                forces = self.convert_forces_to_native(
+                    forces, inplace=False)
             self.trjfile.variables['forces'][self.curr_frame, :, :] = forces
+
         self.trjfile.sync()
         self.curr_frame += 1
 

@@ -1,13 +1,19 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver Beckstein
-# and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -47,7 +53,7 @@ class Timestep(base.Timestep):
         self._unitcell[:] = core.triclinic_vectors(new)
 
 
-class ConfigReader(base.SingleFrameReader):
+class ConfigReader(base.SingleFrameReaderBase):
     """DLPoly Config file Reader
 
     .. versionadded:: 0.11.0
@@ -61,7 +67,7 @@ class ConfigReader(base.SingleFrameReader):
 
         with open(self.filename, 'r') as inf:
             self.title = inf.readline().strip()
-            levcfg, imcon, megatm = map(int, inf.readline().split()[:3])
+            levcfg, imcon, megatm = np.int64(inf.readline().split()[:3])
             if not imcon == 0:
                 unitcell[0][:] = inf.readline().split()
                 unitcell[1][:] = inf.readline().split()
@@ -90,13 +96,13 @@ class ConfigReader(base.SingleFrameReader):
                 else:
                     ids.append(idx)
 
-                xyz = list(map(float, inf.readline().split()))
+                xyz = np.float32(inf.readline().split())
                 coords.append(xyz)
                 if has_vels:
-                    vxyz = list(map(float, inf.readline().split()))
+                    vxyz = np.float32(inf.readline().split())
                     velocities.append(vxyz)
                 if has_forces:
-                    fxyz = list(map(float, inf.readline().split()))
+                    fxyz = np.float32(inf.readline().split())
                     forces.append(fxyz)
 
                 line = inf.readline().strip()
@@ -134,7 +140,7 @@ class ConfigReader(base.SingleFrameReader):
         ts.frame = 0
 
 
-class HistoryReader(base.Reader):
+class HistoryReader(base.ReaderBase):
     """Reads DLPoly format HISTORY files
 
     .. versionadded:: 0.11.0
@@ -149,7 +155,7 @@ class HistoryReader(base.Reader):
         # "private" file handle
         self._file = open(self.filename, 'r')
         self.title = self._file.readline().strip()
-        self._levcfg, self._imcon, self.n_atoms = map(int, self._file.readline().split()[:3])
+        self._levcfg, self._imcon, self.n_atoms = np.int64(self._file.readline().split()[:3])
         self._has_vels = True if self._levcfg > 0 else False
         self._has_forces = True if self._levcfg == 2 else False
 

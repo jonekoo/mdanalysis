@@ -1,13 +1,19 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2015 Naveen Michaud-Agrawal, Elizabeth J. Denning, Oliver
-# Beckstein and contributors (see AUTHORS for the full list)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
 #
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
 #
 # N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
 # MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
@@ -58,24 +64,32 @@ the `VMD xyzplugin`_ from whence the definition was taken)::
     ...
     atomN x y z [ ...         ]                                                 line N+2
 
-.. Note::
-   * comment lines not implemented (do not include them)
-   * molecule name: the line is required but the content is ignored
-     at the moment
-   * optional data (after the coordinates) are presently ignored
+
+Note
+----
+* comment lines not implemented (do not include them)
+* molecule name: the line is required but the content is ignored
+  at the moment
+* optional data (after the coordinates) are presently ignored
 
 
 .. Links
 .. _`VMD xyzplugin`: http://www.ks.uiuc.edu/Research/vmd/plugins/molfile/xyzplugin.html
 
-"""
+Classes
+-------
 
+"""
+from __future__ import division, absolute_import
+import six
 from six.moves import range, zip
+
+import itertools
 import os
 import errno
 import numpy as np
 import logging
-logger = logging.getLogger('MDAnalysis.analysis.psa')
+logger = logging.getLogger('MDAnalysis.coordinates.XYZ')
 
 from . import base
 from ..core import flags
@@ -85,7 +99,7 @@ from ..exceptions import NoDataError
 from ..version import __version__
 
 
-class XYZWriter(base.Writer):
+class XYZWriter(base.WriterBase):
     """Writes an XYZ file
 
     The XYZ file format is not formally defined. This writer follows
@@ -100,8 +114,8 @@ class XYZWriter(base.Writer):
     # these are assumed!
     units = {'time': 'ps', 'length': 'Angstrom'}
 
-    def __init__(self, filename, n_atoms=None, atoms='X', convert_units=None,
-                 remark='default', **kwargs):
+    def __init__(self, filename, n_atoms=None, atoms=None, convert_units=None,
+                 remark=None, **kwargs):
         """Initialize the XYZ trajectory writer
 
         Parameters
@@ -125,7 +139,7 @@ class XYZWriter(base.Writer):
             :meth:`XYZWriter.write` then atom information is taken
             at each step and *atoms* is ignored.
         remark: str (optional)
-            single line of text ("molecule name"). By default write MDAnalysis
+            single line of text ("molecule name"). By default writes MDAnalysis
             version
         """
         self.filename = filename
@@ -137,30 +151,27 @@ class XYZWriter(base.Writer):
         self.atomnames = self._get_atomnames(atoms)
         default_remark = "Written by {0} (release {1})".format(
             self.__class__.__name__, __version__)
-        self.remark = default_remark if remark == 'default' else remark
+        self.remark = default_remark if remark is None else remark
         # can also be gz, bz2
         self._xyz = util.anyopen(self.filename, 'wt')
 
     def _get_atomnames(self, atoms):
         """Return a list of atom names"""
-        # AtomGroup
-        try:
-            return atoms.names
-        except AttributeError:
-            pass
-        # universe?
+        # Default case
+        if atoms is None:
+            return itertools.cycle(('X',))
+        # Single atom name provided
+        elif isinstance(atoms, six.string_types):
+            return itertools.cycle((atoms,))
+        # List of atom names providded
+        elif isinstance(atoms, list):
+            return atoms
+        # AtomGroup or Universe, grab the names else default
+        # (AtomGroup.atoms just returns AtomGroup)
         try:
             return atoms.atoms.names
-        except AttributeError:
-            pass
-        # list or string (can be a single atom name... deal with this in
-        # write_next_timestep() once we know n_atoms)
-        if self.n_atoms is None:
-            return np.asarray(util.asiterable(atoms))
-        if isinstance(atoms, list):
-            return atoms
-        else:
-            return np.asarray([atoms for _ in range(self.n_atoms)])
+        except (AttributeError, NoDataError):
+            return itertools.cycle(('X',))
 
     def close(self):
         """Close the trajectory file and finalize the writing"""
@@ -170,19 +181,17 @@ class XYZWriter(base.Writer):
         self._xyz = None
 
     def write(self, obj):
-        """Write object *obj* at current trajectory frame to file.
+        """Write object `obj` at current trajectory frame to file.
 
-        *obj* can be a :class:`~MDAnalysis.core.AtomGroup.AtomGroup`)
-        or a whole :class:`~MDAnalysis.core.AtomGroup.Universe`.
-
-        Atom names in the output are taken from the *obj* or default
-        to the value of the *atoms* keyword supplied to the
+        Atom names in the output are taken from the `obj` or default
+        to the value of the `atoms` keyword supplied to the
         :class:`XYZWriter` constructor.
 
-        :Arguments:
-          *obj*
-            :class:`~MDAnalysis.core.AtomGroup.AtomGroup` or
-            :class:`~MDAnalysis.core.AtomGroup.Universe`
+        Parameters
+        ----------
+        obj : Universe or AtomGroup
+            The :class:`~MDAnalysis.core.groups.AtomGroup` or
+            :class:`~MDAnalysis.core.universe.Universe` to write.
         """
         # prepare the Timestep and extract atom names if possible
         # (The way it is written it should be possible to write
@@ -191,8 +200,11 @@ class XYZWriter(base.Writer):
         try:
             atoms = obj.atoms
         except AttributeError:
-            atoms = None
-        if atoms:  # have a AtomGroup
+            if isinstance(obj, base.Timestep):
+                ts = obj
+            else:
+                raise TypeError("No Timestep found in obj argument")
+        else:
             if hasattr(obj, 'universe'):
                 # For AtomGroup and children (Residue, ResidueGroup, Segment)
                 ts_full = obj.universe.trajectory.ts
@@ -205,12 +217,7 @@ class XYZWriter(base.Writer):
                 # For Universe only --- get everything
                 ts = obj.trajectory.ts
             # update atom names
-            self.atomnames = atoms.names
-        else:
-            if isinstance(obj, base.Timestep):
-                ts = obj
-            else:
-                raise TypeError("No Timestep found in obj argument")
+            self.atomnames = self._get_atomnames(atoms)
 
         self.write_next_timestep(ts)
 
@@ -231,7 +238,8 @@ class XYZWriter(base.Writer):
                                  'different number ({}) then expected ({})'
                                  ''.format(ts.n_atoms, self.n_atoms))
         else:
-            if len(self.atomnames) != ts.n_atoms:
+            if (not isinstance(self.atomnames, itertools.cycle) and
+                len(self.atomnames) != ts.n_atoms):
                 logger.info('Trying to write a TimeStep with unkown atoms. '
                             'Expected {}, got {}. Try using "write" if you are '
                             'using "write_next_timestep" directly'.format(
@@ -251,7 +259,7 @@ class XYZWriter(base.Writer):
                             "".format(atom, x, y, z))
 
 
-class XYZReader(base.Reader):
+class XYZReader(base.ReaderBase):
     """Reads from an XYZ file
 
     :Data:
@@ -295,7 +303,7 @@ class XYZReader(base.Reader):
         # coordinates::core.py so the last file extension will tell us if it is
         # bzipped or not
         root, ext = os.path.splitext(self.filename)
-        self.xyzfile = util.anyopen(self.filename, "r")
+        self.xyzfile = util.anyopen(self.filename)
         self.compression = ext[1:] if ext[1:] != "xyz" else None
         self._cache = dict()
 
@@ -310,7 +318,7 @@ class XYZReader(base.Reader):
     @cached('n_atoms')
     def n_atoms(self):
         """number of atoms in a frame"""
-        with util.anyopen(self.filename, 'r') as f:
+        with util.anyopen(self.filename) as f:
             n = f.readline()
         # need to check type of n
         return int(n)
@@ -330,7 +338,7 @@ class XYZReader(base.Reader):
         counter = 0
         offsets = []
 
-        with util.anyopen(self.filename, 'r') as f:
+        with util.anyopen(self.filename) as f:
             line = True
             while line:
                 if not counter % linesPerFrame:
@@ -359,18 +367,15 @@ class XYZReader(base.Reader):
             # we assume that there are only two header lines per frame
             f.readline()
             f.readline()
+            # convert all entries at the end once for optimal speed
+            tmp_buf = []
             for i in range(self.n_atoms):
-                self.ts._pos[i] = list(map(float, f.readline().split()[1:4]))
+                tmp_buf.append(f.readline().split()[1:4])
+            ts.positions = tmp_buf
             ts.frame += 1
             return ts
         except (ValueError, IndexError) as err:
             raise EOFError(err)
-
-    def rewind(self):
-        """reposition on first frame"""
-        self._reopen()
-        # the next method calls _read_next_timestep
-        self.next()
 
     def _reopen(self):
         self.close()
@@ -381,7 +386,7 @@ class XYZReader(base.Reader):
             raise IOError(
                 errno.EALREADY, 'XYZ file already opened', self.filename)
 
-        self.xyzfile = util.anyopen(self.filename, "r")
+        self.xyzfile = util.anyopen(self.filename)
 
         # reset ts
         ts = self.ts
@@ -409,7 +414,7 @@ class XYZReader(base.Reader):
 
         See Also
         --------
-        :class: `XYZWriter`
+        :class:`XYZWriter`
         """
         if n_atoms is None:
             n_atoms = self.n_atoms

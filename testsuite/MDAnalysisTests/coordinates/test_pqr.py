@@ -1,16 +1,42 @@
+# -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 fileencoding=utf-8
+#
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
+#
+# Released under the GNU Public Licence, v2 or any higher version
+#
+# Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
+from __future__ import absolute_import
 import MDAnalysis as mda
 import os
+import pytest
 
-from numpy.testing import (assert_almost_equal, assert_equal)
-from unittest import TestCase
+from numpy.testing import (
+    assert_almost_equal,
+    assert_equal,
+)
 
-from MDAnalysisTests.coordinates.reference import (RefAdKSmall)
+from MDAnalysisTests.coordinates.reference import RefAdKSmall
 from MDAnalysisTests.coordinates.base import _SingleFrameReader
-from MDAnalysisTests.datafiles import (PQR)
-from MDAnalysisTests import tempdir
-
+from MDAnalysisTests.datafiles import PQR
+from MDAnalysisTests import tempdir, make_Universe
+from numpy.testing import TestCase
 
 class TestPQRReader(_SingleFrameReader):
+    __test__ = True
     def setUp(self):
         self.universe = mda.Universe(PQR)
         # 3 decimals in PDB spec
@@ -30,13 +56,15 @@ class TestPQRReader(_SingleFrameReader):
     # Note that the whole system gets the sysID 'SYSTEM' for the PQR file (when
     # read with a PSF it is 's4AKE')
     def test_ArgCACharges(self):
+        ag = self.universe.select_atoms('resname ARG and name CA')
         assert_almost_equal(
-            self.universe.SYSTEM.ARG.CA.charges, self.ref_charmm_ArgCAcharges,
+            ag.charges, self.ref_charmm_ArgCAcharges,
             3, "Charges for CA atoms in Arg residues do not match.")
 
     def test_ProNCharges(self):
+        ag = self.universe.select_atoms('resname PRO and name N')
         assert_almost_equal(
-            self.universe.SYSTEM.PRO.N.charges, self.ref_charmm_ProNcharges, 3,
+            ag.charges, self.ref_charmm_ProNcharges, 3,
             "Charges for N atoms in Pro residues do not match.")
 
 
@@ -72,8 +100,11 @@ class TestPQRWriter(TestCase, RefAdKSmall):
                             self.prec, err_msg="Writing PQR file with "
                             "PQRWriter does not reproduce original radii")
 
+    # 363 TODO:
+    # Not sure if this should be a segid or chainID?
+    # Topology system now allows for both of these
     def test_write_withChainID(self):
-        self.universe.atoms.set_segids('A')
+        self.universe.segments.segids = 'A'
         assert_equal(self.universe.segments.segids[0], 'A')  # sanity check
         self.universe.atoms.write(self.outfile)
         u = mda.Universe(self.outfile)
@@ -103,3 +134,67 @@ class TestPQRWriter(TestCase, RefAdKSmall):
         assert_almost_equal(
             u.atoms.total_charge(), self.ref_charmm_totalcharge, 3,
             "Total charge (in CHARMM) does not match expected value.")
+
+class TestPQRWriterMissingAttrs(TestCase):
+    # pqr requires names, resids, resnames, segids, radii, charges
+    def setUp(self):
+        self.reqd_attributes = ['names', 'resids', 'resnames', 'radii', 'charges']
+        self.tmpdir = tempdir.TempDir()
+        self.outfile = self.tmpdir.name + '/pqr-writer-test.pqr'
+
+    def tearDown(self):
+        try:
+            os.unlink(self.outfile)
+        except OSError:
+            pass
+        del self.tmpdir
+        del self.outfile
+        del self.reqd_attributes
+
+    def test_no_names_writing(self):
+        attrs = self.reqd_attributes
+        attrs.remove('names')
+        u = make_Universe(attrs, trajectory=True)
+
+        with pytest.warns(UserWarning):
+            u.atoms.write(self.outfile)
+
+        u2 = mda.Universe(self.outfile)
+
+        assert all(u2.atoms.names == 'X')
+
+    def test_no_resnames_writing(self):
+        attrs = self.reqd_attributes
+        attrs.remove('resnames')
+        u = make_Universe(attrs, trajectory=True)
+
+        with pytest.warns(UserWarning):
+            u.atoms.write(self.outfile)
+
+        u2 = mda.Universe(self.outfile)
+
+        assert all(u2.residues.resnames == 'UNK')
+
+    def test_no_radii_writing(self):
+        attrs = self.reqd_attributes
+        attrs.remove('radii')
+        u = make_Universe(attrs, trajectory=True)
+
+        with pytest.warns(UserWarning):
+            u.atoms.write(self.outfile)
+
+        u2 = mda.Universe(self.outfile)
+
+        assert all(u2.atoms.radii == 1.0)
+
+    def test_no_charges_writing(self):
+        attrs = self.reqd_attributes
+        attrs.remove('charges')
+        u = make_Universe(attrs, trajectory=True)
+
+        with pytest.warns(UserWarning):
+            u.atoms.write(self.outfile)
+
+        u2 = mda.Universe(self.outfile)
+
+        assert all(u2.atoms.charges == 0.0)

@@ -21,7 +21,7 @@
 set -o errexit -o nounset
 
 function die () {
-    local msg="$1" err={$2:-1}
+    local msg="$1" err=${2:-1}
     echo "ERROR: $msg [$err]"
     exit $err
 }
@@ -47,7 +47,9 @@ touch .
 touch .nojekyll
 
 git add -A .
-git commit -m "rebuilt html docs from branch ${GH_DOC_BRANCH} with sphinx at ${rev}"
+# check for anything to commit
+# https://stackoverflow.com/questions/3878624/how-do-i-programmatically-determine-if-there-are-uncommited-changes
+git diff-index --quiet HEAD -- || git commit -m "rebuilt html docs from branch ${GH_DOC_BRANCH} with sphinx at ${rev}"
 git push -q upstream HEAD:gh-pages
 
 

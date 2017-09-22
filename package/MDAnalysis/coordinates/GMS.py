@@ -1,18 +1,24 @@
 # -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; -*-
 # vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
 #
-# MDAnalysis --- http://www.MDAnalysis.org
-# Copyright (c) 2006-2011 Naveen Michaud-Agrawal,
-#               Elizabeth J. Denning, Oliver Beckstein,
-#               and contributors (see website for details)
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
+#
 # Released under the GNU Public Licence, v2 or any higher version
 #
 # Please cite your use of MDAnalysis in published work:
 #
-#     N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and
-#     O. Beckstein. MDAnalysis: A Toolkit for the Analysis of
-#     Molecular Dynamics Simulations. J. Comput. Chem. 32 (2011), 2319--2327,
-#     doi:10.1002/jcc.21787
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
 #
 
 """GAMESS trajectory reader --- :mod:`MDAnalysis.coordinates.GMS`
@@ -24,8 +30,13 @@ GAMESS distributions: US-GAMESS, Firefly (PC-GAMESS) and GAMESS-UK.
 Current version was approbated with US-GAMESS & Firefly only.
 
 There appears to be no rigid format definition so it is likely users
-will need to tweak this Class.
+will need to tweak the :class:`GMSReader`.
+
+.. autoclass:: GMSReader
+   :members:
+
 """
+from __future__ import absolute_import
 
 import os
 import errno
@@ -35,7 +46,7 @@ from . import base
 import MDAnalysis.lib.util as util
 
 
-class GMSReader(base.Reader):
+class GMSReader(base.ReaderBase):
     """Reads from an GAMESS output file
 
     :Data:
@@ -48,13 +59,17 @@ class GMSReader(base.Reader):
         ``for ts in out:``
           iterate through trajectory
 
-    .. Note: this can read both compressed (foo.out) and compressed
-          (foo.out.bz2 or foo.out.gz) files; uncompression is handled
-          on the fly
+    Note
+    ----
+    :class:`GMSReader` can read both uncompressed (``foo.out``) and
+    compressed (``foo.out.bz2`` or ``foo.out.gz``) files;
+    decompression is handled on the fly
+
 
     .. versionchanged:: 0.11.0
-       Frames now 0-based instead of 1-based
-       Added dt and time_offset keywords (passed to Timestep)
+       Frames now 0-based instead of 1-based.
+       Added `dt` and `time_offset` keywords (passed to :class:`Timestep`).
+
     """
 
     format = "GMS"
@@ -66,7 +81,7 @@ class GMSReader(base.Reader):
         super(GMSReader, self).__init__(outfilename, **kwargs)
 
         # the filename has been parsed to be either b(g)zipped or not
-        self.outfile = util.anyopen(self.filename, 'rt')
+        self.outfile = util.anyopen(self.filename)
 
         # note that, like for xtc and trr files, _n_atoms and _n_frames are used quasi-private variables
         # to prevent the properties being recalculated
@@ -102,16 +117,14 @@ class GMSReader(base.Reader):
             return self._runtyp
 
     def _determine_runtyp(self):
-        self._reopen()
-        counter = 0
-        for line in self.outfile:
-            m = re.match(r'^.*RUNTYP=([A-Z]+)\s+.*', line)
-            if (m is not None):
-                self.close()
-                return m.group(1).lower()
+        with util.openany(self.filename) as out:
+            for line in out:
+                m = re.match(r'^.*RUNTYP=([A-Z]+)\s+.*', line)
+                if m is not None:
+                    res = m.group(1).lower()
+                    break
 
-        self.close()
-        raise EOFError
+        return res
 
     @property
     def n_atoms(self):
@@ -126,44 +139,46 @@ class GMSReader(base.Reader):
             return self._n_atoms
 
     def _read_out_natoms(self):
-        self._reopen()
-        # this assumes that this is only called once at startup and that the
-        # filestream is already open
-        for line in self.outfile:
-            m = re.match(r'\s*TOTAL NUMBER OF ATOMS\s*=\s*([0-9]+)\s*',line)
-            if m is None:
-                continue
-            self.close()
-            return int(m.group(1))
+        with util.openany(self.filename) as out:
+            for line in out:
+                m = re.match(r'\s*TOTAL NUMBER OF ATOMS\s*=\s*([0-9]+)\s*',line)
+                if m is not None:
+                    res = int(m.group(1))
+                    break
 
-        self.close()
-        raise EOFError
+        return res
 
     @property
     def n_frames(self):
         if self._n_frames is not None:   # return cached value
             return self._n_frames
         try:
-            self._n_frames = self._read_out_n_frames(self.filename)
+            self._n_frames = self._read_out_n_frames()
         except IOError:
             return 0
         else:
             return self._n_frames
 
-    def _read_out_n_frames(self, filename):
-        self._reopen()
-        counter = 0
+    def _read_out_n_frames(self):
         if self.runtyp == 'optimize':
-            for line in self.outfile:
-                if re.match(r'^.NSERCH=.*', line):
-                    counter += 1
+            trigger = re.compile(b'^.NSERCH=.*')
         elif self.runtyp == 'surface':
-            for line in self.outfile:
-                if re.match(r'^.COORD 1=.*', line):
-                    counter += 1
+            trigger = re.compile(b'^.COORD 1=.*')
 
-        self.close()
-        return int(counter)
+        self._offsets = offsets = []
+        with util.openany(self.filename, 'rb') as out:
+            line = True
+            while not line == b'':  # while not EOF
+                line = out.readline()
+                if re.match(trigger, line):
+                    offsets.append(out.tell() - len(line))
+
+        return len(offsets)
+
+    def _read_frame(self, frame):
+        self.outfile.seek(self._offsets[frame])
+        self.ts.frame = frame - 1  # gets +1'd in _read_next
+        return self._read_next_timestep()
 
     def _read_next_timestep(self, ts=None):
         # check that the timestep object exists
@@ -225,12 +240,6 @@ class GMSReader(base.Reader):
 
         raise EOFError
 
-    def rewind(self):
-        """reposition on first frame"""
-        self._reopen()
-        # the next method is inherited from the Reader Class and calls _read_next_timestep
-        self.next()
-
     def _reopen(self):
         self.close()
         self.open_trajectory()
@@ -242,7 +251,7 @@ class GMSReader(base.Reader):
             # must check; otherwise might segmentation fault
             raise IOError(errno.ENOENT, 'GMS file not found', self.filename)
 
-        self.outfile = util.anyopen(self.filename, 'rt')
+        self.outfile = util.anyopen(self.filename)
 
         # reset ts
         ts = self.ts

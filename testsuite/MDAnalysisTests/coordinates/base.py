@@ -1,11 +1,32 @@
+# -*- Mode: python; tab-width: 4; indent-tabs-mode:nil; coding:utf-8 -*-
+# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4 fileencoding=utf-8
+#
+# MDAnalysis --- http://www.mdanalysis.org
+# Copyright (c) 2006-2017 The MDAnalysis Development Team and contributors
+# (see the file AUTHORS for the full list of names)
+#
+# Released under the GNU Public Licence, v2 or any higher version
+#
+# Please cite your use of MDAnalysis in published work:
+#
+# R. J. Gowers, M. Linke, J. Barnoud, T. J. E. Reddy, M. N. Melo, S. L. Seyler,
+# D. L. Dotson, J. Domanski, S. Buchoux, I. M. Kenney, and O. Beckstein.
+# MDAnalysis: A Python package for the rapid analysis of molecular dynamics
+# simulations. In S. Benthall and S. Rostrup editors, Proceedings of the 15th
+# Python in Science Conference, pages 102-109, Austin, TX, 2016. SciPy.
+#
+# N. Michaud-Agrawal, E. J. Denning, T. B. Woolf, and O. Beckstein.
+# MDAnalysis: A Toolkit for the Analysis of Molecular Dynamics Simulations.
+# J. Comput. Chem. 32 (2011), 2319--2327, doi:10.1002/jcc.21787
+#
+from __future__ import absolute_import
 import itertools
 import numpy as np
+import pytest
 from six.moves import zip, range
-from nose.plugins.attrib import attr
 from unittest import TestCase
-from numpy.testing import (assert_equal, assert_raises, assert_almost_equal,
-                           assert_array_almost_equal, raises, assert_allclose,
-                           assert_)
+from numpy.testing import (assert_equal, assert_almost_equal,
+                           assert_array_almost_equal, assert_allclose)
 
 import MDAnalysis as mda
 from MDAnalysis.coordinates.base import Timestep
@@ -13,11 +34,13 @@ from MDAnalysis import NoDataError
 from MDAnalysis.lib.mdamath import triclinic_vectors
 
 from MDAnalysisTests.coordinates.reference import RefAdKSmall
-from MDAnalysisTests import tempdir
+from MDAnalysisTests.datafiles import AUX_XVG_HIGHF, AUX_XVG_LOWF
+from MDAnalysisTests import tempdir, make_Universe
 
 
 class _SingleFrameReader(TestCase, RefAdKSmall):
     # see TestPDBReader how to set up!
+    __test__ = False
 
     def tearDown(self):
         del self.universe
@@ -59,8 +82,8 @@ class _SingleFrameReader(TestCase, RefAdKSmall):
     def test_frame_index_1_raises_IndexError(self):
         def go_to_2(traj=self.universe.trajectory):
             traj[1]
-
-        assert_raises(IndexError, go_to_2)
+        with pytest.raises(IndexError):
+            go_to_2()
 
     def test_dt(self):
         """testing that accessing universe.trajectory.dt gives 1.0
@@ -70,7 +93,7 @@ class _SingleFrameReader(TestCase, RefAdKSmall):
     def test_coordinates(self):
         A10CA = self.universe.atoms.CA[10]
         # restrict accuracy to maximum in PDB files (3 decimals)
-        assert_almost_equal(A10CA.pos,
+        assert_almost_equal(A10CA.position,
                             self.ref_coordinates['A10CA'],
                             3,
                             err_msg="wrong coordinates for A10:CA")
@@ -106,23 +129,57 @@ class BaseReference(object):
         self.container_format = False
         self.changing_dimensions = False
 
+        # for testing auxiliary addition
+        self.aux_lowf = AUX_XVG_LOWF  # test auxiliary with lower frequency
+        self.aux_lowf_dt = 2  # has steps at 0ps, 2ps, 4ps
+        # representative data for each trajectory frame, assuming 'closest' option
+        self.aux_lowf_data = [[2 ** 0],  # frame 0 = 0ps = step 0
+                              [np.nan],  # frame 1 = 1ps = no step
+                              [2 ** 1],  # frame 2 = 2ps = step 1
+                              [np.nan],  # frame 3 = 3ps = no step
+                              [2 ** 2],  # frame 4 = 4ps = step 2
+                              ]
+        self.aux_lowf_frames_with_steps = [0, 2, 4]  # trajectory frames with
+        # corresponding auxiliary steps
+
+        self.aux_highf = AUX_XVG_HIGHF  # test auxiliary with higher frequency
+        self.aux_highf_dt = 0.5  # has steps at 0, 0.5, 1, ... 3.5, 4ps
+        self.aux_highf_data = [[2 ** 0],  # frame 0 = 0ps = step 0
+                               [2 ** 2],  # frame 1 = 1ps = step 2
+                               [2 ** 4],  # frame 2 = 2ps = step 4
+                               [2 ** 6],  # frame 3 = 3ps = step 6
+                               [2 ** 8],  # frame 4 = 4ps = step 8
+                               ]
+        self.aux_highf_n_steps = 10
+        self.aux_highf_all_data = [[2 ** i] for i in range(self.aux_highf_n_steps)]
+
+        self.aux_offset_by = 0.25
+
         self.first_frame = Timestep(self.n_atoms)
         self.first_frame.positions = np.arange(
             3 * self.n_atoms).reshape(self.n_atoms, 3)
         self.first_frame.frame = 0
+        self.first_frame.aux.lowf = self.aux_lowf_data[0]
+        self.first_frame.aux.highf = self.aux_highf_data[0]
 
         self.second_frame = self.first_frame.copy()
         self.second_frame.positions = 2 ** 1 * self.first_frame.positions
         self.second_frame.frame = 1
+        self.second_frame.aux.lowf = self.aux_lowf_data[1]
+        self.second_frame.aux.highf = self.aux_highf_data[1]
 
         self.last_frame = self.first_frame.copy()
         self.last_frame.positions = 2 ** 4 * self.first_frame.positions
         self.last_frame.frame = self.n_frames - 1
+        self.last_frame.aux.lowf = self.aux_lowf_data[-1]
+        self.last_frame.aux.highf = self.aux_highf_data[-1]
 
         # remember frames are 0 indexed
         self.jump_to_frame = self.first_frame.copy()
         self.jump_to_frame.positions = 2 ** 3 * self.first_frame.positions
         self.jump_to_frame.frame = 3
+        self.jump_to_frame.aux.lowf = self.aux_lowf_data[3]
+        self.jump_to_frame.aux.highf = self.aux_highf_data[3]
 
         self.dimensions = np.array([81.1, 82.2, 83.3, 75, 80, 85],
                                    dtype=np.float32)
@@ -131,208 +188,328 @@ class BaseReference(object):
         self.volume = mda.lib.mdamath.box_volume(self.dimensions)
         self.time = 0
         self.dt = 1
-        self.totaltime = 5
+        self.totaltime = 4
 
     def iter_ts(self, i):
         ts = self.first_frame.copy()
-        ts.positions = 2**i * self.first_frame.positions
+        ts.positions = 2 ** i * self.first_frame.positions
         ts.time = i
         ts.frame = i
+        ts.aux.lowf = np.array(self.aux_lowf_data[i])
+        ts.aux.highf = np.array(self.aux_highf_data[i])
         return ts
 
 
 class BaseReaderTest(object):
-    def __init__(self, reference):
-        self.ref = reference
-        self.reader = self.ref.reader(self.ref.trajectory)
+    @staticmethod
+    @pytest.fixture()
+    def reader(ref):
+        reader = ref.reader(ref.trajectory)
+        reader.add_auxiliary('lowf', ref.aux_lowf, dt=ref.aux_lowf_dt, initial_time=0, time_selector=None)
+        reader.add_auxiliary('highf', ref.aux_highf, dt=ref.aux_highf_dt, initial_time=0, time_selector=None)
+        return reader
 
-    def test_n_atoms(self):
-        assert_equal(self.reader.n_atoms, self.ref.n_atoms)
+    def test_n_atoms(self, ref, reader):
+        assert_equal(reader.n_atoms, ref.n_atoms)
 
-    def test_n_frames(self):
-        assert_equal(len(self.reader), self.ref.n_frames)
+    def test_n_frames(self, ref, reader):
+        assert_equal(len(reader), ref.n_frames)
 
-    def test_first_frame(self):
-        self.reader.rewind()
-        assert_timestep_almost_equal(self.reader.ts, self.ref.first_frame,
-                                     decimal=self.ref.prec)
+    def test_first_frame(self, ref, reader):
+        reader.rewind()
+        assert_timestep_almost_equal(reader.ts, ref.first_frame,
+                                     decimal=ref.prec)
 
-    def test_double_close(self):
-        self.reader.close()
-        self.reader.close()
-        self.reader._reopen()
+    def test_double_close(self, reader):
+        reader.close()
+        reader.close()
+        reader._reopen()
 
-    def test_reopen(self):
-        self.reader.close()
-        self.reader._reopen()
-        ts = self.reader.next()
-        assert_timestep_almost_equal(ts, self.ref.first_frame,
-                                     decimal=self.ref.prec)
-
-    def test_last_frame(self):
-        ts = self.reader[-1]
-        assert_timestep_almost_equal(ts, self.ref.last_frame,
-                                     decimal=self.ref.prec)
-
-    def test_next_gives_second_frame(self):
-        reader = self.ref.reader(self.ref.trajectory)
-        ts = reader.next()
-        assert_timestep_almost_equal(ts, self.ref.second_frame,
-                                     decimal=self.ref.prec)
-
-    @raises(IndexError)
-    def test_go_over_last_frame(self):
-        self.reader[self.ref.n_frames + 1]
-
-    def test_frame_jump(self):
-        ts = self.reader[self.ref.jump_to_frame.frame]
-        assert_timestep_almost_equal(ts, self.ref.jump_to_frame,
-                                     decimal=self.ref.prec)
-
-    def test_get_writer_1(self):
+    def test_get_writer_1(self, ref, reader):
         with tempdir.in_tempdir():
-            self.outfile = 'test-writer' + self.ref.ext
-            with self.reader.Writer(self.outfile) as W:
-                assert_equal(isinstance(W, self.ref.writer), True)
-                assert_equal(W.n_atoms, self.reader.n_atoms)
+            outfile = 'test-writer' + ref.ext
+            with reader.Writer(outfile) as W:
+                assert_equal(isinstance(W, ref.writer), True)
+                assert_equal(W.n_atoms, reader.n_atoms)
 
-    def test_get_writer_2(self):
+    def test_get_writer_2(self, ref, reader):
         with tempdir.in_tempdir():
-            self.outfile = 'test-writer' + self.ref.ext
-            with self.reader.Writer(self.outfile, n_atoms=100) as W:
-                assert_equal(isinstance(W, self.ref.writer), True)
+            outfile = 'test-writer' + ref.ext
+            with reader.Writer(outfile, n_atoms=100) as W:
+                assert_equal(isinstance(W, ref.writer), True)
                 assert_equal(W.n_atoms, 100)
 
-    def test_dt(self):
-        assert_equal(self.reader.dt, self.ref.dt)
+    def test_dt(self, ref, reader):
+        assert_almost_equal(reader.dt, ref.dt, decimal=ref.prec)
 
-    def test_ts_dt_matches_reader(self):
-        assert_equal(self.reader.ts.dt, self.reader.dt)
+    def test_ts_dt_matches_reader(self, reader):
+        assert_equal(reader.ts.dt, reader.dt)
 
-    def test_total_time(self):
-        assert_equal(self.reader.totaltime, self.ref.totaltime)
+    def test_total_time(self, ref, reader):
+        assert_almost_equal(reader.totaltime, ref.totaltime, decimal=ref.prec)
 
-    def test_first_dimensions(self):
-        self.reader.rewind()
-        assert_array_almost_equal(self.reader.ts.dimensions,
-                                  self.ref.dimensions,
-                                  decimal=self.ref.prec)
+    def test_first_dimensions(self, ref, reader):
+        reader.rewind()
+        assert_array_almost_equal(reader.ts.dimensions,
+                                  ref.dimensions,
+                                  decimal=ref.prec)
 
-    def test_changing_dimensions(self):
-        if self.ref.changing_dimensions:
-            self.reader.rewind()
-            assert_array_almost_equal(self.reader.ts.dimensions,
-                                      self.ref.dimensions,
-                                      decimal=self.ref.prec)
-            self.reader[1]
-            assert_array_almost_equal(self.reader.ts.dimensions,
-                                      self.ref.dimensions_second_frame,
-                                      decimal=self.ref.prec)
+    def test_changing_dimensions(self, ref, reader):
+        if ref.changing_dimensions:
+            reader.rewind()
+            assert_array_almost_equal(reader.ts.dimensions,
+                                      ref.dimensions,
+                                      decimal=ref.prec)
+            reader[1]
+            assert_array_almost_equal(reader.ts.dimensions,
+                                      ref.dimensions_second_frame,
+                                      decimal=ref.prec)
 
-    def test_volume(self):
-        self.reader.rewind()
-        vol = self.reader.ts.volume
+    def test_volume(self, ref, reader):
+        reader.rewind()
+        vol = reader.ts.volume
         # Here we can only be sure about the numbers upto the decimal point due
         # to floating point impressions.
-        assert_almost_equal(vol, self.ref.volume, 0)
+        assert_almost_equal(vol, ref.volume, 0)
 
-    def test_iter(self):
-        for i, ts in enumerate(self.reader):
-            assert_timestep_almost_equal(ts, self.ref.iter_ts(i),
-                                         decimal=self.ref.prec)
+    def test_iter(self, ref, reader):
+        for i, ts in enumerate(reader):
+            assert_timestep_almost_equal(ts, ref.iter_ts(i),
+                                         decimal=ref.prec)
+
+    def test_add_same_auxname_raises_ValueError(self, ref, reader):
+        with pytest.raises(ValueError):
+            reader.add_auxiliary('lowf', ref.aux_lowf)
+
+    def test_remove_auxiliary(self, reader):
+        reader.remove_auxiliary('lowf')
+        with pytest.raises(AttributeError):
+            getattr(reader._auxs, 'lowf')
+        with pytest.raises(AttributeError):
+            getattr(reader.ts.aux, 'lowf')
+
+    def test_remove_nonexistant_auxiliary_raises_ValueError(self, reader):
+        with pytest.raises(ValueError):
+            reader.remove_auxiliary('nonexistant')
+
+    def test_iter_auxiliary(self, ref, reader):
+        # should go through all steps in 'highf'
+        for i, auxstep in enumerate(reader.iter_auxiliary('highf')):
+            assert_almost_equal(auxstep.data, ref.aux_highf_all_data[i],
+                                err_msg="Auxiliary data does not match for "
+                                        "step {}".format(i))
+
+    def test_get_aux_attribute(self, ref, reader):
+        assert_equal(reader.get_aux_attribute('lowf', 'dt'),
+                     ref.aux_lowf_dt)
+
+    def test_iter_as_aux_cutoff(self, ref, reader):
+        # load an auxiliary with the same dt but offset from trajectory, and a
+        # cutoff of 0
+        reader.add_auxiliary('offset', ref.aux_lowf,
+                                  dt=ref.dt, time_selector=None,
+                                  initial_time=ref.aux_offset_by,
+                                  cutoff=0)
+        # no auxiliary steps will fall within the cutoff for any frame, so
+        # iterating using iter_as_aux should give us nothing
+        num_frames = len([i for i in reader.iter_as_aux('offset')])
+        assert_equal(num_frames, 0, "iter_as_aux should iterate over 0 frames,"
+                                    " not {}".format(num_frames))
+
+    def test_reload_auxiliaries_from_description(self, ref, reader):
+        # get auxiliary desscriptions form existing reader
+        descriptions = reader.get_aux_descriptions()
+        # load a new reader, without auxiliaries
+        reader = ref.reader(ref.trajectory)
+        # load auxiliaries into new reader, using description...
+        for aux in descriptions:
+            reader.add_auxiliary(**aux)
+        # should have the same number of auxiliaries
+        assert_equal(reader.aux_list, reader.aux_list,
+                     'Number of auxiliaries does not match')
+        # each auxiliary should be the same
+        for auxname in reader.aux_list:
+            assert_equal(reader._auxs[auxname], reader._auxs[auxname],
+                         'AuxReaders do not match')
+
+    def test_stop_iter(self, reader):
+        # reset to 0
+        reader.rewind()
+        for ts in reader[:-1]:
+            pass
+        assert_equal(reader.frame, 0)
+
+
+class MultiframeReaderTest(BaseReaderTest):
+    def test_last_frame(self, ref, reader):
+        ts = reader[-1]
+        assert_timestep_almost_equal(ts, ref.last_frame,
+                                     decimal=ref.prec)
+
+    def test_go_over_last_frame(self, ref, reader):
+        with pytest.raises(IndexError):
+            reader[ref.n_frames + 1]
+
+    def test_frame_jump(self, ref, reader):
+        ts = reader[ref.jump_to_frame.frame]
+        assert_timestep_almost_equal(ts, ref.jump_to_frame,
+                                     decimal=ref.prec)
+
+    def test_next_gives_second_frame(self, ref, reader):
+        reader = ref.reader(ref.trajectory)
+        ts = reader.next()
+        assert_timestep_almost_equal(ts, ref.second_frame,
+                                     decimal=ref.prec)
+
+    def test_reopen(self, ref, reader):
+        reader.close()
+        reader._reopen()
+        ts = reader.next()
+        assert_timestep_almost_equal(ts, ref.first_frame,
+                                     decimal=ref.prec)
+
+    def test_rename_aux(self, ref, reader):
+        reader.rename_aux('lowf', 'lowf_renamed')
+        # data should now be in aux namespace under new name
+        assert_equal(reader.ts.aux.lowf_renamed,
+                    ref.aux_lowf_data[0])
+        # old name should be removed
+        with pytest.raises(AttributeError):
+            getattr(reader.ts.aux, 'lowf')
+        # new name should be retained
+        next(reader)
+        assert_equal(reader.ts.aux.lowf_renamed,
+                     ref.aux_lowf_data[1])
+
+    def test_iter_as_aux_highf(self, ref, reader):
+        # auxiliary has a higher frequency, so iter_as_aux should behave the
+        # same as regular iteration over the trjectory
+        for i, ts in enumerate(reader.iter_as_aux('highf')):
+            assert_timestep_almost_equal(ts, ref.iter_ts(i),
+                                         decimal=ref.prec)
+
+    def test_iter_as_aux_lowf(self, ref, reader):
+        # auxiliary has a lower frequency, so iter_as_aux should iterate over
+        # only frames where there is a corresponding auxiliary value
+        for i, ts in enumerate(reader.iter_as_aux('lowf')):
+            assert_timestep_almost_equal(ts,
+                                         ref.iter_ts(ref.aux_lowf_frames_with_steps[i]),
+                                         decimal=ref.prec)
 
 
 class BaseWriterTest(object):
-    def __init__(self, reference):
-        self.ref = reference
-        self.tmpdir = tempdir.TempDir()
-        self.reader = self.ref.reader(self.ref.trajectory)
+    @staticmethod
+    @pytest.fixture()
+    def reader(ref):
+        return ref.reader(ref.trajectory)
 
-    def tmp_file(self, name):
-        return self.tmpdir.name + name + '.' + self.ref.ext
+    @staticmethod
+    @pytest.fixture()
+    def u_no_resnames():
+        return make_Universe(['names', 'resids'], trajectory=True)
 
-    def test_write_trajectory_timestep(self):
-        outfile = self.tmp_file('write-timestep-test')
-        with self.ref.writer(outfile, self.reader.n_atoms) as W:
-            for ts in self.reader:
+    @staticmethod
+    @pytest.fixture()
+    def u_no_resids():
+        return make_Universe(['names', 'resnames'], trajectory=True)
+
+    @staticmethod
+    @pytest.fixture()
+    def u_no_names():
+        return make_Universe(['resids', 'resnames'],
+                             trajectory=True)
+
+    @staticmethod
+    @pytest.fixture()
+    def tempdir():
+        return tempdir.TempDir()
+
+    def tmp_file(self, name, ref, tempdir):
+        return tempdir.name + name + '.' + ref.ext
+
+    def test_write_trajectory_timestep(self,ref, reader, tempdir):
+        outfile = self.tmp_file('write-timestep-test', ref, tempdir)
+        with ref.writer(outfile, reader.n_atoms) as W:
+            for ts in reader:
                 W.write(ts)
-        self._check_copy(outfile)
+        self._check_copy(outfile, ref, reader)
 
-    def test_write_different_box(self):
-        if self.ref.changing_dimensions:
-            outfile = self.tmp_file('write-dimensions-test')
-            with self.ref.writer(outfile, self.reader.n_atoms) as W:
-                for ts in self.reader:
+    def test_write_different_box(self, ref, reader, tempdir):
+        if ref.changing_dimensions:
+            outfile = self.tmp_file('write-dimensions-test', ref, tempdir)
+            with ref.writer(outfile, reader.n_atoms) as W:
+                for ts in reader:
                     ts.dimensions[:3] += 1
                     W.write(ts)
 
-            written = self.ref.reader(outfile)
+            written = ref.reader(outfile)
 
-            for ts_ref, ts_w in zip(self.reader, written):
+            for ts_ref, ts_w in zip(reader, written):
                 ts_ref.dimensions[:3] += 1
                 assert_array_almost_equal(ts_ref.dimensions,
                                           ts_w.dimensions,
-                                          decimal=self.ref.prec)
+                                          decimal=ref.prec)
 
-    def test_write_trajectory_atomgroup(self):
-        uni = mda.Universe(self.ref.topology, self.ref.trajectory)
-        outfile = self.tmp_file('write-atoms-test')
-        with self.ref.writer(outfile, uni.atoms.n_atoms) as w:
+    def test_write_trajectory_atomgroup(self, ref,reader, tempdir):
+        uni = mda.Universe(ref.topology, ref.trajectory)
+        outfile = self.tmp_file('write-atoms-test', ref, tempdir)
+        with ref.writer(outfile, uni.atoms.n_atoms) as w:
             for ts in uni.trajectory:
                 w.write(uni.atoms)
-        self._check_copy(outfile)
+        self._check_copy(outfile, ref, reader)
 
-    def test_write_trajectory_universe(self):
-        uni = mda.Universe(self.ref.topology, self.ref.trajectory)
-        outfile = self.tmp_file('write-uni-test')
-        with self.ref.writer(outfile, uni.atoms.n_atoms) as w:
+    def test_write_trajectory_universe(self, ref, reader, tempdir):
+        uni = mda.Universe(ref.topology, ref.trajectory)
+        outfile = self.tmp_file('write-uni-test', ref, tempdir)
+        with ref.writer(outfile, uni.atoms.n_atoms) as w:
             for ts in uni.trajectory:
                 w.write(uni)
-        self._check_copy(outfile)
+        self._check_copy(outfile, ref, reader)
 
-    def test_write_selection(self):
-        uni = mda.Universe(self.ref.topology, self.ref.trajectory)
+    def test_write_selection(self, ref, reader, u_no_resnames, u_no_resids, u_no_names, tempdir):
+        uni = mda.Universe(ref.topology, ref.trajectory)
         sel_str = 'resid 1'
         sel = uni.select_atoms(sel_str)
-        outfile = self.tmp_file('write-selection-test')
+        outfile = self.tmp_file('write-selection-test', ref, tempdir)
 
-        with self.ref.writer(outfile, sel.n_atoms) as W:
+        with ref.writer(outfile, sel.n_atoms) as W:
             for ts in uni.trajectory:
                 W.write(sel.atoms)
 
-        copy = self.ref.reader(outfile)
+        copy = ref.reader(outfile)
         for orig_ts, copy_ts in zip(uni.trajectory, copy):
             assert_array_almost_equal(
-                copy_ts._pos, sel.atoms.positions, self.ref.prec,
+                copy_ts._pos, sel.atoms.positions, ref.prec,
                 err_msg="coordinate mismatch between original and written "
-                "trajectory at frame {} (orig) vs {} (copy)".format(
+                        "trajectory at frame {} (orig) vs {} (copy)".format(
                     orig_ts.frame, copy_ts.frame))
 
-    def _check_copy(self, fname):
-        copy = self.ref.reader(fname)
-        assert_equal(self.reader.n_frames, copy.n_frames)
-        for orig_ts, copy_ts in zip(self.reader, copy):
+    def _check_copy(self, fname, ref, reader):
+        copy = ref.reader(fname)
+        assert_equal(reader.n_frames, copy.n_frames)
+        for orig_ts, copy_ts in zip(reader, copy):
             assert_timestep_almost_equal(
-                copy_ts, orig_ts, decimal=self.ref.prec)
+                copy_ts, orig_ts, decimal=ref.prec)
 
-    @raises(TypeError)
-    def test_write_none(self):
-        outfile = self.tmp_file('write-none')
-        with self.ref.writer(outfile, 42) as w:
-            w.write(None)
+    def test_write_none(self, ref, tempdir):
+        outfile = self.tmp_file('write-none', ref, tempdir)
+        with pytest.raises(TypeError):
+            with ref.writer(outfile, 42) as w:
+                w.write(None)
 
-    def test_no_container(self):
+    def test_no_container(self, ref):
         with tempdir.in_tempdir():
-            if self.ref.container_format:
-                self.ref.writer('foo')
+            if ref.container_format:
+                ref.writer('foo')
             else:
-                assert_raises(TypeError, self.ref.writer, 'foo')
+                with pytest.raises(TypeError):
+                    ref.writer('foo')
 
-    def test_write_not_changing_ts(self):
-        outfile = self.tmp_file('write-not-changing-ts')
-        ts = self.reader.ts.copy()
+    def test_write_not_changing_ts(self, ref, reader, tempdir):
+        outfile = self.tmp_file('write-not-changing-ts', ref, tempdir)
+        ts = reader.ts.copy()
         copy_ts = ts.copy()
-        with self.ref.writer(outfile, n_atoms=5) as W:
+        with ref.writer(outfile, n_atoms=5) as W:
             W.write(ts)
             assert_timestep_almost_equal(copy_ts, ts)
 
@@ -362,139 +539,146 @@ class BaseTimestepTest(object):
     unitcell = np.array([10., 11., 12., 90., 90., 90.])
     ref_volume = 1320.  # what the volume is after setting newbox
     uni_args = None
+        
+    @pytest.fixture()
+    def ts(self):
+        ts = self.Timestep(self.size)
+        ts.frame += 1
+        ts.positions = self.refpos
+        return ts
+        
+    def test_getitem(self, ts):
+        assert_equal(ts[1], self.refpos[1])
 
-    def setUp(self):
-        self.ts = self.Timestep(self.size)
-        self.ts.frame += 1
-        self.ts.positions = self.refpos
+    def test_getitem_neg(self, ts):
+        assert_equal(ts[-1], self.refpos[-1])
 
-    def tearDown(self):
-        del self.ts
+    def test_getitem_neg_IE(self, ts):
+        with pytest.raises(IndexError):
+            ts.__getitem__(-(self.size + 1))
 
-    def test_getitem(self):
-        assert_equal(self.ts[1], self.refpos[1])
 
-    def test_getitem_neg(self):
-        assert_equal(self.ts[-1], self.refpos[-1])
+    def test_getitem_pos_IE(self, ts):
+        with pytest.raises(IndexError):
+            ts.__getitem__((self.size + 1))
 
-    def test_getitem_neg_IE(self):
-        assert_raises(IndexError, self.ts.__getitem__, -(self.size + 1))
+    def test_getitem_slice(self, ts):
+        assert_equal(len(ts[:2]), len(self.refpos[:2]))
+        assert_allclose(ts[:2], self.refpos[:2])
 
-    def test_getitem_pos_IE(self):
-        assert_raises(IndexError, self.ts.__getitem__, (self.size + 1))
+    def test_getitem_slice2(self, ts):
+        assert_equal(len(ts[1::2]), len(self.refpos[1::2]))
+        assert_allclose(ts[1::2], self.refpos[1::2])
 
-    def test_getitem_slice(self):
-        assert_equal(len(self.ts[:2]), len(self.refpos[:2]))
-        assert_allclose(self.ts[:2], self.refpos[:2])
-
-    def test_getitem_slice2(self):
-        assert_equal(len(self.ts[1::2]), len(self.refpos[1::2]))
-        assert_allclose(self.ts[1::2], self.refpos[1::2])
-
-    def test_getitem_ndarray(self):
+    def test_getitem_ndarray(self, ts):
         sel = np.array([0, 1, 4])
-        assert_equal(len(self.ts[sel]), len(self.refpos[sel]))
-        assert_allclose(self.ts[sel], self.refpos[sel])
+        assert_equal(len(ts[sel]), len(self.refpos[sel]))
+        assert_allclose(ts[sel], self.refpos[sel])
 
-    def test_getitem_TE(self):
-        assert_raises(TypeError, self.ts.__getitem__, 'string')
+    def test_getitem_TE(self, ts):
+        with pytest.raises(TypeError):
+            ts.__getitem__('string')
 
-    def test_len(self):
-        assert_equal(len(self.ts), self.size)
+    def test_len(self, ts):
+        assert_equal(len(ts), self.size)
 
-    def test_iter(self):
-        for a, b in zip(self.ts, self.refpos):
+    def test_iter(self, ts):
+        for a, b in zip(ts, self.refpos):
             assert_allclose(a, b)
-        assert_equal(len(list(self.ts)), self.size)
+        assert_equal(len(list(ts)), self.size)
 
-    def test_repr(self):
-        assert_equal(type(repr(self.ts)), str)
+    def test_repr(self, ts):
+        assert_equal(type(repr(ts)), str)
 
     # Dimensions has 2 possible cases
     # Timestep doesn't do dimensions,
     # should raise NotImplementedError for .dimension and .volume
     # Timestep does do them, should return values properly
-    def test_dimensions(self):
+    def test_dimensions(self, ts):
         if self.has_box:
-            assert_allclose(self.ts.dimensions, np.zeros(6, dtype=np.float32))
+            assert_allclose(ts.dimensions, np.zeros(6, dtype=np.float32))
         else:
-            assert_raises(NotImplementedError, getattr, self.ts, "dimensions")
+            with pytest.raises(NotImplementedError):
+                getattr(ts, "dimensions")
 
-    def test_dimensions_set_box(self):
+    def test_dimensions_set_box(self, ts):
         if self.set_box:
-            self.ts.dimensions = self.newbox
-            assert_allclose(self.ts._unitcell, self.unitcell)
-            assert_allclose(self.ts.dimensions, self.newbox)
+            ts.dimensions = self.newbox
+            assert_allclose(ts._unitcell, self.unitcell)
+            assert_allclose(ts.dimensions, self.newbox)
         else:
             pass
 
-    def test_volume(self):
+    def test_volume(self, ts):
         if self.has_box and self.set_box:
-            self.ts.dimensions = self.newbox
-            assert_equal(self.ts.volume, self.ref_volume)
+            ts.dimensions = self.newbox
+            assert_equal(ts.volume, self.ref_volume)
         elif self.has_box and not self.set_box:
             pass  # How to test volume of box when I don't set unitcell first?
         else:
-            assert_raises(NotImplementedError, getattr, self.ts, "volume")
+            with pytest.raises(NotImplementedError):
+                getattr(self.ts, "volume")
 
-    def test_triclinic_vectors(self):
-        assert_allclose(self.ts.triclinic_dimensions,
-                        triclinic_vectors(self.ts.dimensions))
+    def test_triclinic_vectors(self, ts):
+        assert_allclose(ts.triclinic_dimensions,
+                        triclinic_vectors(ts.dimensions))
 
-    def test_set_triclinic_vectors(self):
+    def test_set_triclinic_vectors(self, ts):
         ref_vec = triclinic_vectors(self.newbox)
-        self.ts.triclinic_dimensions = ref_vec
-        assert_equal(self.ts.dimensions, self.newbox)
-        assert_allclose(self.ts._unitcell, self.unitcell)
+        ts.triclinic_dimensions = ref_vec
+        assert_equal(ts.dimensions, self.newbox)
+        assert_allclose(ts._unitcell, self.unitcell)
 
-    @attr('issue')
-    def test_coordinate_getter_shortcuts(self):
+    def test_coordinate_getter_shortcuts(self, ts):
         """testing that reading _x, _y, and _z works as expected
         # (Issue 224) (TestTimestep)"""
-        assert_allclose(self.ts._x, self.ts._pos[:, 0])
-        assert_allclose(self.ts._y, self.ts._pos[:, 1])
-        assert_allclose(self.ts._z, self.ts._pos[:, 2])
+        assert_allclose(ts._x, ts._pos[:, 0])
+        assert_allclose(ts._y, ts._pos[:, 1])
+        assert_allclose(ts._z, ts._pos[:, 2])
 
-    def test_coordinate_setter_shortcuts(self):
+    def test_coordinate_setter_shortcuts(self, ts):
         # Check that _x _y and _z are read only
         for coordinate in ('_x', '_y', '_z'):
             random_positions = np.arange(self.size).astype(np.float32)
-            assert_raises(AttributeError, setattr,
-                          self.ts, coordinate, random_positions)
+            with pytest.raises(AttributeError):
+                setattr(ts, coordinate, random_positions)
 
     # n_atoms should be a read only property
     # all Timesteps require this attribute
-    def test_n_atoms(self):
-        assert_equal(self.ts.n_atoms, self.ts._n_atoms)
+    def test_n_atoms(self, ts):
+        assert_equal(ts.n_atoms, ts._n_atoms)
 
-    def test_n_atoms_readonly(self):
-        assert_raises(AttributeError, self.ts.__setattr__, 'n_atoms', 20)
+    def test_n_atoms_readonly(self, ts):
+        with pytest.raises(AttributeError):
+            ts.__setattr__('n_atoms', 20)
 
-    def test_n_atoms_presence(self):
-        assert_equal(hasattr(self.ts, '_n_atoms'), True)
+    def test_n_atoms_presence(self, ts):
+        assert_equal(hasattr(ts, '_n_atoms'), True)
 
-    def test_unitcell_presence(self):
-        assert_equal(hasattr(self.ts, '_unitcell'), True)
+    def test_unitcell_presence(self, ts):
+        assert_equal(hasattr(ts, '_unitcell'), True)
 
-    def test_data_presence(self):
-        assert_equal(hasattr(self.ts, 'data'), True)
-        assert_equal(isinstance(self.ts.data, dict), True)
+    def test_data_presence(self, ts):
+        assert_equal(hasattr(ts, 'data'), True)
+        assert_equal(isinstance(ts.data, dict), True)
 
-    def test_allocate_velocities(self):
-        assert_equal(self.ts.has_velocities, False)
-        assert_raises(NoDataError, getattr, self.ts, 'velocities')
+    def test_allocate_velocities(self, ts):
+        assert_equal(ts.has_velocities, False)
+        with pytest.raises(NoDataError):
+            getattr(ts, 'velocities')
 
-        self.ts.has_velocities = True
-        assert_equal(self.ts.has_velocities, True)
-        assert_equal(self.ts.velocities.shape, (self.ts.n_atoms, 3))
+        ts.has_velocities = True
+        assert_equal(ts.has_velocities, True)
+        assert_equal(ts.velocities.shape, (ts.n_atoms, 3))
 
-    def test_allocate_forces(self):
-        assert_equal(self.ts.has_forces, False)
-        assert_raises(NoDataError, getattr, self.ts, 'forces')
+    def test_allocate_forces(self, ts):
+        assert_equal(ts.has_forces, False)
+        with pytest.raises(NoDataError):
+            getattr(ts, 'forces')
 
-        self.ts.has_forces = True
-        assert_equal(self.ts.has_forces, True)
-        assert_equal(self.ts.forces.shape, (self.ts.n_atoms, 3))
+        ts.has_forces = True
+        assert_equal(ts.has_forces, True)
+        assert_equal(ts.forces.shape, (ts.n_atoms, 3))
 
     def test_velocities_remove(self):
         ts = self.Timestep(10, velocities=True)
@@ -503,7 +687,8 @@ class BaseTimestepTest(object):
 
         ts.has_velocities = False
         assert_equal(ts.has_velocities, False)
-        assert_raises(NoDataError, getattr, ts, 'velocities')
+        with pytest.raises(NoDataError):
+            getattr(ts, 'velocities')
 
     def test_forces_remove(self):
         ts = self.Timestep(10, forces=True)
@@ -512,11 +697,12 @@ class BaseTimestepTest(object):
 
         ts.has_forces = False
         assert_equal(ts.has_forces, False)
-        assert_raises(NoDataError, getattr, ts, 'forces')
+        with pytest.raises(NoDataError):
+            getattr(ts, 'forces')
 
-    def _empty_ts(self):
-        assert_raises(ValueError, self.Timestep.from_coordinates,
-                      None, None, None)
+    def test_check_ts(self):
+        with pytest.raises(ValueError):
+            self.Timestep.from_coordinates(None, None, None)
 
     def _from_coords(self, p, v, f):
         posi = self.refpos if p else None
@@ -527,51 +713,37 @@ class BaseTimestepTest(object):
 
         return ts
 
-    def _check_from_coordinates(self, p, v, f):
+    @pytest.mark.parametrize('p, v, f', filter(any,
+                                               itertools.product([True, False],
+                                                                 repeat=3)))
+    def test_from_coordinates(self, p, v, f):
         ts = self._from_coords(p, v, f)
 
         if p:
             assert_array_almost_equal(ts.positions, self.refpos)
         else:
-            assert_raises(NoDataError, getattr, ts, 'positions')
+            with pytest.raises(NoDataError):
+                getattr(ts, 'positions')
         if v:
             assert_array_almost_equal(ts.velocities, self.refvel)
         else:
-            assert_raises(NoDataError, getattr, ts, 'velocities')
+            with pytest.raises(NoDataError):
+                getattr(ts, 'velocities')
         if f:
             assert_array_almost_equal(ts.forces, self.reffor)
         else:
-            assert_raises(NoDataError, getattr, ts, 'forces')
-
-    def test_from_coordinates(self):
-        # Check all combinations of creating a Timestep from data
-        # 8 possibilites of with and without 3 data categories
-        for p, v, f in itertools.product([True, False], repeat=3):
-            if not any([p, v, f]):
-                yield self._empty_ts
-            else:
-                yield self._check_from_coordinates, p, v, f
+            with pytest.raises(NoDataError):
+                getattr(ts, 'forces')
 
     def test_from_coordinates_mismatch(self):
         velo = self.refvel[:2]
 
-        assert_raises(ValueError, self.Timestep.from_coordinates,
-                      self.refpos, velo)
+        with pytest.raises(ValueError):
+            self.Timestep.from_coordinates(self.refpos, velo)
 
     def test_from_coordinates_nodata(self):
-        assert_raises(ValueError, self.Timestep.from_coordinates)
-
-    def _check_from_timestep(self, p, v, f):
-        ts = self._from_coords(p, v, f)
-        ts2 = self.Timestep.from_timestep(ts)
-
-        assert_timestep_almost_equal(ts, ts2)
-
-    def test_from_timestep(self):
-        for p, v, f in itertools.product([True, False], repeat=3):
-            if not any([p, v, f]):
-                continue
-            yield self._check_from_timestep, p, v, f
+        with pytest.raises(ValueError):
+            self.Timestep.from_coordinates()
 
     # Time related tests
     def test_supply_dt(self):
@@ -678,19 +850,19 @@ class BaseTimestepTest(object):
         # - frame
         # - n_atoms
         # - positions, vels and forces
-        assert_(ref_ts == ts2)
+        assert ref_ts == ts2
 
         assert_array_almost_equal(ref_ts.dimensions, ts2.dimensions,
                                   decimal=4)
 
         # Check things not covered by eq
         for d in ref_ts.data:
-            assert_(d in ts2.data)
+            assert d in ts2.data
             if isinstance(ref_ts.data[d], np.ndarray):
                 assert_array_almost_equal(
                     ref_ts.data[d], ts2.data[d])
             else:
-                assert_(ref_ts.data[d] == ts2.data[d])
+                assert ref_ts.data[d] == ts2.data[d]
 
     def _check_independent(self, name, ts):
         """Check that copies made are independent"""
@@ -720,6 +892,15 @@ class BaseTimestepTest(object):
         ts2 = ts.copy_slice(sl)
         self._check_slice(ts, ts2, sl)
 
+    def _check_npint_slice(self, name, ts):
+        for integers in [np.byte, np.short, np.intc, np.int_, np.longlong,
+                         np.intp, np.int8, np.int16, np.int32, np.int64, 
+                         np.ubyte, np.ushort, np.uintc, np.ulonglong,
+                         np.uintp, np.uint8, np.uint16, np.uint32, np.uint64]:
+            sl = slice(1, 2, 1)
+            ts2 = ts.copy_slice(slice(integers(1), integers(2), integers(1)))
+            self._check_slice(ts, ts2, sl)
+        
     def _check_slice(self, ts1, ts2, sl):
         if ts1.has_positions:
             assert_array_almost_equal(ts1.positions[sl], ts2.positions)
@@ -728,71 +909,74 @@ class BaseTimestepTest(object):
         if ts1.has_forces:
             assert_array_almost_equal(ts1.forces[sl], ts2.forces)
 
-    def test_copy(self):
+    @pytest.mark.parametrize('func', [
+        _check_copy,
+        _check_independent,
+        _check_copy_slice_indices,
+        _check_copy_slice_slice,
+        _check_npint_slice
+    ])
+    def test_copy(self, func, ts):
         if self.uni_args is None:
             return
         u = mda.Universe(*self.uni_args)
         ts = u.trajectory.ts
+        func(self, self.name, ts)
 
-        yield self._check_copy, self.name, ts
-        yield self._check_independent, self.name, ts
-        yield self._check_copy_slice_indices, self.name, ts
-        yield self._check_copy_slice_slice, self.name, ts
+    @pytest.fixture(params=filter(any,
+                                  itertools.product([True, False], repeat=3)))
+    def some_ts(self, request):
+        p, v, f = request.param
+        return self._from_coords(p, v, f)
 
-    def test_copy_slice(self):
-        for p, v, f in itertools.product([True, False], repeat=3):
-            if not any([p, v, f]):
-                continue
-            ts = self._from_coords(p, v, f)
-            yield self._check_copy, self.name, ts
-            yield self._check_independent, self.name, ts
-            yield self._check_copy_slice_indices, self.name, ts
-            yield self._check_copy_slice_slice, self.name, ts
+    @pytest.mark.parametrize('func', [
+        _check_copy,
+        _check_independent,
+        _check_copy_slice_indices,
+        _check_copy_slice_slice,
+        _check_npint_slice
+    ])
+    def test_copy_slice(self, func, some_ts):
+        func(self, self.name, some_ts)
 
-    def _check_bad_slice(self, p, v, f):
-        ts = self._from_coords(p, v, f)
+    def test_bad_slice(self, some_ts):
         sl = ['this', 'is', 'silly']
-        assert_raises(TypeError, ts.copy_slice, sl)
+        with pytest.raises(TypeError):
+            some_ts.copy_slice(sl)
 
-    def test_bad_copy_slice(self):
-        for p, v, f in itertools.product([True, False], repeat=3):
-            if not any([p, v, f]):
-                continue
-            yield self._check_bad_slice, p, v, f
+    def test_from_timestep(self, some_ts):
+        ts = some_ts
+        ts2 = self.Timestep.from_timestep(ts)
+
+        assert_timestep_almost_equal(ts, ts2)
 
     def _get_pos(self):
         # Get generic reference positions
         return np.arange(30).reshape(10, 3) * 1.234
 
-    def _check_ts_equal(self, a, b, err_msg):
-        assert_(a == b, err_msg)
-        assert_(b == a, err_msg)
+    @pytest.mark.parametrize('p, v, f', filter(any,
+                                               itertools.product([True, False],
+                                                                 repeat=3)))
+    def test_check_equal(self, p, v, f):
+        ts1 = self.Timestep(self.size,
+                            positions=p,
+                            velocities=v,
+                            forces=f)
+        ts2 = self.Timestep(self.size,
+                            positions=p,
+                            velocities=v,
+                            forces=f)
+        if p:
+            ts1.positions = self.refpos.copy()
+            ts2.positions = self.refpos.copy()
+        if v:
+            ts1.velocities = self.refvel.copy()
+            ts2.velocities = self.refvel.copy()
+        if f:
+            ts1.forces = self.reffor.copy()
+            ts2.forces = self.reffor.copy()
 
-    def test_check_equal(self):
-        for p, v, f in itertools.product([True, False], repeat=3):
-            if not any([p, v, f]):
-                continue
-
-            ts1 = self.Timestep(self.size,
-                                positions=p,
-                                velocities=v,
-                                forces=f)
-            ts2 = self.Timestep(self.size,
-                                positions=p,
-                                velocities=v,
-                                forces=f)
-            if p:
-                ts1.positions = self.refpos.copy()
-                ts2.positions = self.refpos.copy()
-            if v:
-                ts1.velocities = self.refvel.copy()
-                ts2.velocities = self.refvel.copy()
-            if f:
-                ts1.forces = self.reffor.copy()
-                ts2.forces = self.reffor.copy()
-
-            yield (self._check_ts_equal, ts1, ts2,
-                   'Failed on {0}'.format(self.name))
+        assert_timestep_equal(ts1, ts2)
 
     def test_wrong_class_equality(self):
         ts1 = self.Timestep(self.size)
@@ -800,8 +984,8 @@ class BaseTimestepTest(object):
 
         b = tuple([0, 1, 2, 3])
 
-        assert_(ts1 != b)
-        assert_(b != ts1)
+        assert ts1 != b
+        assert b != ts1
 
     def test_wrong_frame_equality(self):
         ts1 = self.Timestep(self.size)
@@ -811,8 +995,8 @@ class BaseTimestepTest(object):
         ts2.positions = self._get_pos()
         ts2.frame = 987
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
 
     def test_wrong_n_atoms_equality(self):
         ts1 = self.Timestep(self.size)
@@ -820,8 +1004,8 @@ class BaseTimestepTest(object):
 
         ts3 = self.Timestep(self.size * 2)
 
-        assert_(ts1 != ts3)
-        assert_(ts3 != ts1)
+        assert ts1 != ts3
+        assert ts3 != ts1
 
     def test_wrong_pos_equality(self):
         ts1 = self.Timestep(self.size)
@@ -830,8 +1014,8 @@ class BaseTimestepTest(object):
         ts2 = self.Timestep(self.size)
         ts2.positions = self._get_pos() + 1.0
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
 
     def test_check_vels_equality(self):
         ts1 = self.Timestep(self.size, velocities=True)
@@ -840,8 +1024,8 @@ class BaseTimestepTest(object):
         ts1.velocities = self._get_pos()
         ts2.velocities = self._get_pos()
 
-        assert_(ts1 == ts2)
-        assert_(ts2 == ts1)
+        assert ts1 == ts2
+        assert ts2 == ts1
 
     def test_check_mismatched_vels_equality(self):
         ts1 = self.Timestep(self.size, velocities=True)
@@ -849,8 +1033,8 @@ class BaseTimestepTest(object):
 
         ts1.velocities = self._get_pos()
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
 
     def test_check_wrong_vels_equality(self):
         ts1 = self.Timestep(self.size, velocities=True)
@@ -859,8 +1043,8 @@ class BaseTimestepTest(object):
         ts1.velocities = self._get_pos()
         ts2.velocities = self._get_pos() + 1.0
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
 
     def test_check_forces_equality(self):
         ts1 = self.Timestep(self.size, forces=True)
@@ -869,8 +1053,8 @@ class BaseTimestepTest(object):
         ts1.forces = self._get_pos()
         ts2.forces = self._get_pos()
 
-        assert_(ts1 == ts2)
-        assert_(ts2 == ts1)
+        assert ts1 == ts2
+        assert ts2 == ts1
 
     def test_check_mismatched_forces_equality(self):
         ts1 = self.Timestep(self.size, forces=True)
@@ -878,8 +1062,8 @@ class BaseTimestepTest(object):
 
         ts1.forces = self._get_pos()
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
 
     def test_check_wrong_forces_equality(self):
         ts1 = self.Timestep(self.size, forces=True)
@@ -888,8 +1072,15 @@ class BaseTimestepTest(object):
         ts1.forces = self._get_pos()
         ts2.forces = self._get_pos() + 1.0
 
-        assert_(ts1 != ts2)
-        assert_(ts2 != ts1)
+        assert ts1 != ts2
+        assert ts2 != ts1
+
+
+def assert_timestep_equal(A, B, msg=''):
+    """ assert that two timesteps are exactly equal and commutative
+    """
+    assert A == B, msg
+    assert B == A, msg
 
 
 def assert_timestep_almost_equal(A, B, decimal=6, verbose=True):
@@ -903,7 +1094,7 @@ def assert_timestep_almost_equal(A, B, decimal=6, verbose=True):
                              'A.frame = {}, B.frame={}'.format(
                                  A.frame, B.frame))
 
-    if A.time != B.time:
+    if not np.allclose(A.time, B.time):
         raise AssertionError('A and B refer to different times: '
                              'A.time = {}, B.time={}'.format(
                                  A.time, B.time))
@@ -939,3 +1130,9 @@ def assert_timestep_almost_equal(A, B, decimal=6, verbose=True):
     if A.has_forces:
         assert_array_almost_equal(A.forces, B.forces, decimal=decimal,
                                   err_msg='Timestep forces', verbose=verbose)
+
+    # Check we've got auxiliaries before comparing values (auxiliaries aren't written
+    # so we won't have aux values to compare when testing writer)
+    if len(A.aux) > 0 and len(B.aux) > 0:
+        assert_equal(A.aux, B.aux, err_msg='Auxiliary values do not match: '
+                                  'A.aux = {}, B.aux = {}'.format(A.aux, B.aux))
