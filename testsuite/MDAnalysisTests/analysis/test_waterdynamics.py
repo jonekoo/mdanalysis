@@ -24,6 +24,8 @@ from MDAnalysisTests.datafiles import waterPSF, waterDCD, bulkworDCD, \
 from MDAnalysisTests import parser_not_found
 import numpy
 
+SELECTION1 = "byres name OH2"
+SELECTION2 = "byres name P1"
 
 class TestWaterdynamics(TestCase):
     @dec.skipif(parser_not_found('DCD'),
@@ -40,24 +42,38 @@ class TestWaterdynamics(TestCase):
         assert_equal(round(hbl.timeseries[2][1], 5), 0.75)
 
     def test_WaterOrientationalRelaxation(self):
-        wor = mdawd.WaterOrientationalRelaxation(
-            self.universe, self.selection1, 0, 5, 2)
-        wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
+        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            self.universe,
+            SELECTION1, 0, 5, 2)
+        wor.run()
+        assert round(wor.timeseries[1][2], 5) == 0.35887
 
-    def test_WaterOrientationalRelaxation_dtmin(self):
-        wor = mdawd.WaterOrientationalRelaxation(
-            self.universe, self.selection1, 0, 5, 2, dtmin=2)
-        wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[0][2], 5), 0.45902)
+    def test_WaterOrientationalRelaxation_zeroMolecules(self):
+        wor_zero = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+            self.universe,
+            SELECTION2, 0, 5, 2)
+        wor_zero.run()
+        assert wor_zero.timeseries[1] == (0.0, 0.0, 0.0)
 
-    def test_WaterOrientationalRelaxation_prefetch(self):
-        wor = mdawd.WaterOrientationalRelaxation(
-            self.universe, self.selection1, 0, 5, 2, prefetch=False)
-        wor.run(quiet=True)
-        assert_equal(round(wor.timeseries[1][2], 5), 0.45902)
+    def test_AngularDistribution(self):
+        ad = mdawd.AngularDistribution(
+            self.universe, self.selection1, 40)
+        ad.run(quiet=True)
+        assert_equal(str(ad.graph[0][39]), str("0.951172947884 0.48313682125"))
 
-    def test_WaterOrientationalRelaxation_bulk(self):
+    def test_MeanSquareDisplacement(self):
+        msd = mdawd.MeanSquareDisplacement(
+            self.universe, self.selection1, 0, 10, 2)
+        msd.run(quiet=True)
+        assert_equal(round(msd.timeseries[1], 5), 0.03984)
+
+    def test_SurvivalProbability(self):
+        sp = mdawd.SurvivalProbability(
+            self.universe, self.selection1, 0, 6, 3)
+        sp.run(quiet=True)
+        assert_equal(round(sp.timeseries[1], 5), 1.0)
+
+    def test_BulkWaterOrientationalRelaxation(self):
         # Fabricate data in which only a single molecule is rotating at
         # constant angular velocity around its dipole axis.
         water = self.universe.select_atoms(self.selection1)
@@ -84,9 +100,8 @@ class TestWaterdynamics(TestCase):
         u = MDAnalysis.Universe(waterPSF, bulkworDCD)
 
         # Select only the first water molecule and test
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
-            u, selection, 0, len(u.trajectory), len(u.trajectory)-1,
-            bulk=True)
+        wor = mdawd.BulkWaterOrientationalRelaxation(
+            u, selection, 0, len(u.trajectory), len(u.trajectory)-1, bulk=True)
         wor.run()
 
         # Test the lenght of timeseries:
@@ -105,7 +120,13 @@ class TestWaterdynamics(TestCase):
             assert_equal(round(rec[1], 5),
                          round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
 
-    def test_WaterOrientationalRelaxation_bulk_tip4p(self):
+    # def test_BulkWaterOrientationalRelaxation_dtmin(self):
+    #     wor = mdawd.BulkWaterOrientationalRelaxation(
+    #         self.universe, self.selection1, 0, 5, 2, dtmin=2)
+    #     wor.run(quiet=True)
+    #     assert_equal(round(wor.timeseries[0][2], 5), 0.45902)
+
+    def test_BulkWaterOrientationalRelaxation_tip4p(self):
         selection1 = 'resname WAT'
         w = 0.1  # angular velocity, radians/timestep
         create = False
@@ -141,7 +162,7 @@ class TestWaterdynamics(TestCase):
 
 
         # Select only the first water molecule and test
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.BulkWaterOrientationalRelaxation(
             u, selection, 0, len(u.trajectory), len(u.trajectory)-1,
             bulk=True)
         wor.run()
@@ -162,7 +183,7 @@ class TestWaterdynamics(TestCase):
             assert_equal(round(rec[1], 5),
                          round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
 
-    def test_WaterOrientationalRelaxation_bulk_tip4p_conditional(self):
+    def test_BulkWaterOrientationalRelaxation_tip4p_conditional(self):
         selection1 = 'resname WAT'
         w = 0.1  # angular velocity, radians/timestep
         u = MDAnalysis.Universe(tip4p05prmtop, tip4p05bulkworDCD)
@@ -172,7 +193,7 @@ class TestWaterdynamics(TestCase):
         # selection = selection1 + " and resid " + \
         #    str(water.resids[0]) + "-" + str(water.resids[0])
 
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.BulkWaterOrientationalRelaxation(
             u, 'resid ' + str(water.resids[0]) + "-" + str(water.resids[0]),
             0, len(u.trajectory),
             len(u.trajectory)-1, bulk=True, allwater=selection1)
@@ -194,13 +215,13 @@ class TestWaterdynamics(TestCase):
             assert_equal(round(rec[1], 5),
                          round(1.5 * numpy.cos(w * i)**2 - 0.5, 5))
 
-    def test_WaterOrientationalRelaxation_bulk_single(self):
+    def test_BulkWaterOrientationalRelaxation_single(self):
         # Fabricate data in which only a single molecule is rotating at
         # constant angular velocity around its dipole axis.
         u = MDAnalysis.Universe(waterPSF, bulkworDCD)
 
         # Select only the first water molecule and test
-        wor = MDAnalysis.analysis.waterdynamics.WaterOrientationalRelaxation(
+        wor = mdawd.BulkWaterOrientationalRelaxation(
             u, self.selection1, 0, len(u.trajectory), len(u.trajectory)-1,
             bulk=True, single=True)
         wor.run()
@@ -227,21 +248,3 @@ class TestWaterdynamics(TestCase):
         for i, rec in enumerate(wor.dipC2s[0]):
             # Dipole vector:
             assert_equal(round(rec, 5), 1.0)
-
-    def test_AngularDistribution(self):
-        ad = mdawd.AngularDistribution(
-            self.universe, self.selection1, 40)
-        ad.run(quiet=True)
-        assert_equal(str(ad.graph[0][39]), str("0.951172947884 0.48313682125"))
-
-    def test_MeanSquareDisplacement(self):
-        msd = mdawd.MeanSquareDisplacement(
-            self.universe, self.selection1, 0, 10, 2)
-        msd.run(quiet=True)
-        assert_equal(round(msd.timeseries[1], 5), 0.03984)
-
-    def test_SurvivalProbability(self):
-        sp = mdawd.SurvivalProbability(
-            self.universe, self.selection1, 0, 6, 3)
-        sp.run(quiet=True)
-        assert_equal(round(sp.timeseries[1], 5), 1.0)

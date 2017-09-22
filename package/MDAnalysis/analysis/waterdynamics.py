@@ -580,118 +580,61 @@ class HydrogenBondLifetimes(object):
                 h_list.timeseries, self.t0, self.tf, self.dtmax)
 
 
-class WaterOrientationalRelaxation(object):
-    r"""
-    Function to evaluate the Water Orientational Relaxation proposed by
-    Yu-ling Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation
-    indicates "how fast" water molecules are rotating or changing
-    direction. This is a time correlation function given by:
 
+class WaterOrientationalRelaxation(object):
+    r"""Water orientation relaxation analysis
+    Function to evaluate the Water Orientational Relaxation proposed by Yu-ling
+    Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation indicates
+    "how fast" water molecules are rotating or changing direction. This is a
+    time correlation function given by:
     .. math::
         C_{\hat u}(\tau)=\langle \mathit{P}_2[\mathbf{\hat{u}}(t_0)\cdot\mathbf{\hat{u}}(t_0+\tau)]\rangle
-
-    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial
-    and :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
-
+    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial and :math:`\hat{u}` is
+    a unit vector along HH, OH or dipole vector.
+    Parameters
+    ----------
+    universe : Universe
+      Universe object
+    selection : str
+      Selection string for water [‘byres name OH2’].
+    t0 : int
+      frame  where analysis begins
+    tf : int
+      frame where analysis ends
+    dtmax : int
+      Maximum dt size, `dtmax` < `tf` or it will crash.
     .. versionadded:: 0.11.0
-
-    :Arguments:
-      *universe*
-         Universe object
-      *selection*
-       Selection string, only models with 3-atom molecules (TIP3, TIP3P, etc)
-       are allowed if bulk=False. If bulk=True, also models with 4 sites
-       (TIP4P and variations) work if the order of the atoms is
-       (O, H1, H2, EP).
-      *t0*
-       Time where analysis begin
-      *tf*
-       Time where analysis end
-      *dtmax*
-       Maximum dt size window, dtmax < tf or it will crash.
-      *dtmin*
-       Minimum dt size window, 0 < dtmin < dtmax.
-      *prefetch*
-       When True, the selection is fetched into memory from the whole
-       trajectory before computing the correlations. Not effective if
-       bulk=True.
-      *bulk*
-       When True, the correlation functions are computed for molecules that
-       match the selection in the first frame, e.g. all the water molecules.
-       This is much more efficient than checking for matching molecules in
-       the selections for all two pairs of frames.
-      *single*
-       When True and if also bulk=True, the correlation functions are stored
-       for each water molecule.
-      *allwater*
-       When given, the selection will be compared to allwater to create a mask
-       in each frame of the trajectory. Only those molecules to which the mask
-       is true, contribute to the correlation function.
-      *ignore_gaps*
-       If allwater is given and ignore_gaps is True, the water molecule
-       contributes to the correlation function in all the subsequent frames
-       after the first one in which it is contained in the selection.
     """
 
-    def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
-                 prefetch=True, bulk=False, single=False, allwater=None,
-                 ignore_gaps=False, only_deltas=False):
+    def __init__(self, universe, selection, t0, tf, dtmax, nproc=1):
         self.universe = universe
         self.selection = selection
         self.t0 = t0
         self.tf = tf
-        self.dtmin = dtmin
         self.dtmax = dtmax
         self.nproc = nproc
-        self.prefetch = prefetch
         self.timeseries = None
-        self.bulk = bulk
-        self.correlate = self.correlatefft
-        if single:
-            self.correlate = self.averagesinglefft
-        self.allwater = allwater
-        self.ignore_gaps = ignore_gaps
-        self.only_deltas = only_deltas
-
-        # Find out whether the water model is tip3p or tip4p (or any of
-        # the variants).
-        water = self.universe.select_atoms(selection)
-        # Check that selection is water:
-        if all([item.startswith('O') for item in water.residues.names[::3]]):
-            self.nsites = 3
-        elif all([item.startswith('O') for item in water.residues.names[::4]]):
-            self.nsites = 4
-        else:
-            print([r.names for r in water.residues[:10]])
-            print("Warning: Unknown water model/file format. " +
-                  "Results may vary.")
-        if self.nsites == 4 and not bulk:
-            print("ERROR: Only 3-site water models allowed when bulk=False")
-        if self.allwater is not None:
-            self.create_deltas()
-
 
     def _repeatedIndex(self, selection, dt, totalFrames):
         """
-        Indicate the comparation between all the t+dt.
-        The results is a list of list with all the repeated index per
-        frame (or time).
-
+        Indicates the comparation between all the t+dt.
+        The results is a list of list with all the repeated index per frame
+        (or time).
         Ex: dt=1, so compare frames (1,2),(2,3),(3,4)...
         Ex: dt=2, so compare frames (1,3),(3,5),(5,7)...
         Ex: dt=3, so compare frames (1,4),(4,7),(7,10)...
         """
         rep = []
-        for i in range(int(round((totalFrames-1)/float(dt)))):
-            if dt*i+dt < totalFrames:
-                rep.append(self._sameMolecTandDT(selection, dt*i, (dt*i)+dt))
+        for i in range(int(round((totalFrames - 1) / float(dt)))):
+            if (dt * i + dt < totalFrames):
+                rep.append(self._sameMolecTandDT(
+                    selection, dt * i, (dt * i) + dt))
         return rep
 
     def _getOneDeltaPoint(self, universe, repInd, i, t0, dt):
         """
-        Give one point to promediate and get one point of the graphic
+        Gives one point to calculate the mean and gets one point of the plot
         C_vect vs t.
-
         Ex: t0=1 and tau=1 so calculate the t0-tau=1-2 intervale.
         Ex: t0=5 and tau=3 so calcultate the t0-tau=5-8 intervale.
         i = come from getMeanOnePoint (named j) (int)
@@ -699,458 +642,129 @@ class WaterOrientationalRelaxation(object):
         valOH = 0
         valHH = 0
         valdip = 0
-
-        if repInd is None:
-            universe.trajectory[t0+dt]
-            selectionp = universe.select_atoms(self.selection)
+        n = 0
+        for j in range(len(repInd[i]) // 3):
+            begj = 3 * j
             universe.trajectory[t0]
-            repInd2 = universe.select_atoms(self.selection, group=selectionp)
-        else:
-            universe.trajectory[t0]
-            repInd2 = repInd[i]
-
-        nvecs = len(repInd2) / 3
-
-        unitOHVector0 = np.zeros((nvecs, 3))
-        unitHHVector0 = np.zeros((nvecs, 3))
-        unitdipVector0 = np.zeros((nvecs, 3))
-
-        for j in range(nvecs):
-            begj = 3*j
-
-            # Compute unit vectors of orientation at t0
-            Ot0 = repInd2[begj]
-            H1t0 = repInd2[begj+1]
-            H2t0 = repInd2[begj+2]
+            Ot0 = repInd[i][begj]
+            H1t0 = repInd[i][begj + 1]
+            H2t0 = repInd[i][begj + 2]
             OHVector0 = H1t0.position - Ot0.position
             HHVector0 = H1t0.position - H2t0.position
             dipVector0 = ((H1t0.position + H2t0.position) * 0.5) - Ot0.position
 
-            normOHVector0 = np.linalg.norm(OHVector0)
-            # This is only around 20% faster than the line above:
-            # normOHVector0 = np.sqrt(OHVector0[0]**2 + OHVector0[1]**2 + \
-            #    OHVector0[2]**2)
-            normHHVector0 = np.linalg.norm(HHVector0)
-            normdipVector0 = np.linalg.norm(dipVector0)
-
-            unitOHVector0[j, :] = [OHVector0[0]/normOHVector0,
-                                   OHVector0[1]/normOHVector0,
-                                   OHVector0[2]/normOHVector0]
-            unitHHVector0[j, :] = [HHVector0[0]/normHHVector0,
-                                   HHVector0[1]/normHHVector0,
-                                   HHVector0[2]/normHHVector0]
-            unitdipVector0[j, :] = [dipVector0[0]/normdipVector0,
-                                    dipVector0[1]/normdipVector0,
-                                    dipVector0[2]/normdipVector0]
-
-        unitOHVectorp = np.zeros((nvecs, 3))
-        unitHHVectorp = np.zeros((nvecs, 3))
-        unitdipVectorp = np.zeros((nvecs, 3))
-        universe.trajectory[t0+dt]
-        for j in range(nvecs):
-            begj = 3 * j
-            # Compute unit vectors of orientation at t0 + dt = tp
-            Otp = repInd2[begj]
-            H1tp = repInd2[begj+1]
-            H2tp = repInd2[begj+2]
+            universe.trajectory[t0 + dt]
+            Otp = repInd[i][begj]
+            H1tp = repInd[i][begj + 1]
+            H2tp = repInd[i][begj + 2]
 
             OHVectorp = H1tp.position - Otp.position
             HHVectorp = H1tp.position - H2tp.position
             dipVectorp = ((H1tp.position + H2tp.position) * 0.5) - Otp.position
 
+            normOHVector0 = np.linalg.norm(OHVector0)
             normOHVectorp = np.linalg.norm(OHVectorp)
+            normHHVector0 = np.linalg.norm(HHVector0)
             normHHVectorp = np.linalg.norm(HHVectorp)
+            normdipVector0 = np.linalg.norm(dipVector0)
             normdipVectorp = np.linalg.norm(dipVectorp)
 
-            unitOHVectorp[j, :] = [OHVectorp[0]/normOHVectorp,
-                                   OHVectorp[1]/normOHVectorp,
-                                   OHVectorp[2]/normOHVectorp]
-            unitHHVectorp[j, :] = [HHVectorp[0]/normHHVectorp,
-                                   HHVectorp[1]/normHHVectorp,
-                                   HHVectorp[2]/normHHVectorp]
-            unitdipVectorp[j, :] = [dipVectorp[0]/normdipVectorp,
-                                    dipVectorp[1]/normdipVectorp,
-                                    dipVectorp[2]/normdipVectorp]
+            unitOHVector0 = [OHVector0[0] / normOHVector0,
+                             OHVector0[1] / normOHVector0,
+                             OHVector0[2] / normOHVector0]
+            unitOHVectorp = [OHVectorp[0] / normOHVectorp,
+                             OHVectorp[1] / normOHVectorp,
+                             OHVectorp[2] / normOHVectorp]
+            unitHHVector0 = [HHVector0[0] / normHHVector0,
+                             HHVector0[1] / normHHVector0,
+                             HHVector0[2] / normHHVector0]
+            unitHHVectorp = [HHVectorp[0] / normHHVectorp,
+                             HHVectorp[1] / normHHVectorp,
+                             HHVectorp[2] / normHHVectorp]
+            unitdipVector0 = [dipVector0[0] / normdipVector0,
+                              dipVector0[1] / normdipVector0,
+                              dipVector0[2] / normdipVector0]
+            unitdipVectorp = [dipVectorp[0] / normdipVectorp,
+                              dipVectorp[1] / normdipVectorp,
+                              dipVectorp[2] / normdipVectorp]
 
-        for j in range(nvecs):
-            # Compute contributions to the orientational autocorrelations.
-            valOH += self.lg2(np.dot(unitOHVector0[j, :], unitOHVectorp[j, :]))
-            valHH += self.lg2(np.dot(unitHHVector0[j, :], unitHHVectorp[j, :]))
-            valdip += self.lg2(np.dot(unitdipVector0[j, :],
-                                      unitdipVectorp[j, :]))
-        valOH = valOH / nvecs
-        valHH = valHH / nvecs
-        valdip = valdip / nvecs
-        return (valOH, valHH, valdip)
+            valOH += self.lg2(np.dot(unitOHVector0, unitOHVectorp))
+            valHH += self.lg2(np.dot(unitHHVector0, unitHHVectorp))
+            valdip += self.lg2(np.dot(unitdipVector0, unitdipVectorp))
+            n += 1
+        return  (valOH/n, valHH/n, valdip/n) if n > 0 else (0, 0, 0)
+
 
     def _getMeanOnePoint(self, universe, selection1, selection_str, dt,
                          totalFrames):
         """
-        This function get one point of the graphic C_OH vs t. It uses the
+        This function gets one point of the plot C_vec vs t. It uses the
         _getOneDeltaPoint() function to calculate the average.
-
         """
-        if selection1 is None:
-            repInd = None
-        else:
-            repInd = self._repeatedIndex(selection1, dt, totalFrames)
-
+        repInd = self._repeatedIndex(selection1, dt, totalFrames)
         sumsdt = 0
-        n = 0
+        n = 0.0
         sumDeltaOH = 0.0
         sumDeltaHH = 0.0
         sumDeltadip = 0.0
 
-        while sumsdt+dt < totalFrames:
-            # If the selection of atoms is too small, there will be a
-            # division by zero in the next line. The except clause avoid
-            # the use of the result of _getOneDeltaPoint() on the mean.
-            try:
-                a = self._getOneDeltaPoint(universe, repInd, n, sumsdt, dt)
-            except ZeroDivisionError:
-                continue
+        for j in range(totalFrames // dt - 1):
+            a = self._getOneDeltaPoint(universe, repInd, j, sumsdt, dt)
             sumDeltaOH += a[0]
             sumDeltaHH += a[1]
             sumDeltadip += a[2]
             sumsdt += dt
             n += 1
-        return (sumDeltaOH/n, sumDeltaHH/n, sumDeltadip/n)
+
+        # if no water molecules remain in selection, there is nothing to get
+        # the mean, so n = 0.
+        return (sumDeltaOH / n, sumDeltaHH / n, sumDeltadip / n) if n > 0 else (0, 0, 0)
 
     def _sameMolecTandDT(self, selection, t0d, tf):
         """
-        Compare the molecules in the t0d selection and the t0d+dt
-        selection and select only the particles that are repeated in both
-        frames. This is to consider only the molecules that remains in the
-        selection after the dt time has elapsed. The result is a list with
-        the indexs of the atoms.
+        Compare the molecules in the t0d selection and the t0d+dt selection and
+        select only the particles that are repeated in both frame. This is to
+        consider only the molecules that remains in the selection after the dt
+        time has elapsed.
+        The result is a list with the indexs of the atoms.
         """
-        return selection[t0d].select_atoms(self.selection, group=selection[tf])
+        a = set(selection[t0d])
+        b = set(selection[tf])
+        sort = sorted(list(a.intersection(b)))
+        return sort
 
     def _selection_serial(self, universe, selection_str):
         selection = []
-        for ts in universe.trajectory[self.t0:self.tf]:
+        # pm = ProgressMeter(universe.trajectory.n_frames,
+        #                    interval=10, verbose=True)
+        for ts in universe.trajectory:
             selection.append(universe.select_atoms(selection_str))
-            print(ts.frame)
+            # pm.echo(ts.frame)
         return selection
 
-    # Second Legendre polynomial
-    def lg2(self, x):
-        return (3*x*x - 1.0)/2
-
-    def run_bulk(self, **kwargs):
-        """
-        Analyze trajectory in the case the atoms in the selection do not
-        change over the trajectory. This means we can optimize a lot by
-        ignoring checking for atoms that match in timestep t and t+dt.
-        We can also cache all orientation vectors from t0 to tf.
-        """
-        group = self.universe.select_atoms(self.selection)
-
-        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                            dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            Os = ps[0::self.nsites]
-            H1s = ps[1::self.nsites]
-            # Compute unit vectors of orientation for the OH bonds
-            OHs = H1s-Os
-            OHnorm = np.linalg.norm(OHs, axis=1)
-            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
-            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
-            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
-
-        self.C2s = []
-        C2_OH = self.correlate(self.OHs)
-        del self.OHs
-        self.OHC2s = self.C2s
-        del self.C2s
-
-        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                            dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            H1s = ps[1::self.nsites]
-            H2s = ps[2::self.nsites]
-
-            # Compute unit vectors of orientation for the HH bonds.
-            HHs = H1s-H2s
-            HHnorm = np.linalg.norm(HHs, axis=1)
-            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
-            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
-            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
-
-        self.C2s = []
-        C2_HH = self.correlate(self.HHs)
-        del self.HHs
-        self.HHC2s = self.C2s
-        del self.C2s
-
-        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                             dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            Os = ps[0::self.nsites]
-            H1s = ps[1::self.nsites]
-            H2s = ps[2::self.nsites]
-
-            # Compute unit vectors of orientation for the dipole vectors.
-            dips = (H1s+H2s)*0.5 - Os
-            dipnorm = np.linalg.norm(dips, axis=1)
-            self.dips[:, 0, i] = dips[:, 0] / dipnorm
-            self.dips[:, 1, i] = dips[:, 1] / dipnorm
-            self.dips[:, 2, i] = dips[:, 2] / dipnorm
-
-        self.C2s = []
-        C2_dip = self.correlate(self.dips)
-        del self.dips
-        self.dipC2s = self.C2s
-        del self.C2s
-
-        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
-        self.timeseries[:, 0] = C2_OH
-        self.timeseries[:, 1] = C2_HH
-        self.timeseries[:, 2] = C2_dip
-
-    def create_deltas(self):
-        group = self.universe.select_atoms(self.allwater)
-        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
-                              dtype=int)
-        # create array of residues to be included
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            selected = self.universe.select_atoms(self.selection)
-            self.delta[:, i] = np.where(
-                np.in1d(group.resids[::self.nsites],
-                        selected.resids[::self.nsites]),
-                1, 0)
-        if self.ignore_gaps:
-            for dlt in self.delta:
-                first = np.where(dlt == 1)[0]
-                if first.size > 0:
-                    dlt[first[0]:] = 1
-
-    def run_conditionally(self, **kwargs):
-        """
-        Analyze trajectory in the case the selection changes over the
-        trajectory. Still cache the orientation vectors from the whole
-        trajectory.
-        """
-        group = self.universe.select_atoms(self.allwater)
-        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
-                              dtype=int)
-        # create array of residues to be included
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            selected = self.universe.select_atoms(self.selection)
-            self.delta[:, i] = np.where(
-                np.in1d(group.resids[::self.nsites],
-                        selected.resids[::self.nsites]),
-                1, 0)
-
-        if self.ignore_gaps:
-            for dlt in self.delta:
-                first = np.where(dlt == 1)[0]
-                if first.size > 0:
-                    dlt[first[0]:] = 1
-
-        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                            dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            Os = ps[0::self.nsites]
-            H1s = ps[1::self.nsites]
-            # Compute unit vectors of orientation for the OH bonds
-            OHs = H1s-Os
-            OHnorm = np.linalg.norm(OHs, axis=1)
-            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
-            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
-            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
-
-        self.C2s = []
-        C2_OH = self.correlateconditionally(self.OHs, self.delta)
-        del self.OHs
-        self.OHC2s = self.C2s
-        del self.C2s
-
-        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                            dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            H1s = ps[1::self.nsites]
-            H2s = ps[2::self.nsites]
-
-            # Compute unit vectors of orientation for the HH bonds.
-            HHs = H1s-H2s
-            HHnorm = np.linalg.norm(HHs, axis=1)
-            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
-            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
-            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
-
-        self.C2s = []
-        C2_HH = self.correlateconditionally(self.HHs, self.delta)
-        del self.HHs
-        self.HHC2s = self.C2s
-        del self.C2s
-
-        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
-                             dtype=float)
-        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
-            ps = group.positions
-            Os = ps[0::self.nsites]
-            H1s = ps[1::self.nsites]
-            H2s = ps[2::self.nsites]
-
-            # Compute unit vectors of orientation for the dipole vectors.
-            dips = (H1s+H2s)*0.5 - Os
-            dipnorm = np.linalg.norm(dips, axis=1)
-            self.dips[:, 0, i] = dips[:, 0] / dipnorm
-            self.dips[:, 1, i] = dips[:, 1] / dipnorm
-            self.dips[:, 2, i] = dips[:, 2] / dipnorm
-
-        self.C2s = []
-        C2_dip = self.correlateconditionally(self.dips, self.delta)
-        del self.dips
-        self.dipC2s = self.C2s
-        del self.C2s
-
-        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
-        self.timeseries[:, 0] = C2_OH
-        self.timeseries[:, 1] = C2_HH
-        self.timeseries[:, 2] = C2_dip
-
-    def correlateconditionally(self, u, condition):
-        """Compute C2(t) for vectors u in the cases where condition is
-        true at t' and t'+t."""
-        C2 = 0.0
-        normalization = 0.0
-        for ibond in range(u[:, 0, 0].size):
-            C2ibond = 0.0
-            for i in range(3):
-                for j in range(3):
-                    C2ibond += np.correlate(u[ibond, i, :] * u[ibond, j, :] *
-                                            condition[ibond, :],
-                                            u[ibond, i, :] * u[ibond, j, :] *
-                                            condition[ibond, :], 'full')
-            z = np.correlate(condition[ibond, :], condition[ibond, :], 'full')
-
-            z = z[z.size/2:]
-            C2ibond = C2ibond[C2ibond.size/2:]
-
-            C2ibond /= np.where(z == 0, 1, z)
-            C2ibond = np.where(z == 0, 0.0, C2ibond)
-            normalization += np.where(z == 0, 0, 1)
-            C2 += C2ibond
-        C2 /= np.where(normalization == 0, 1, normalization)
-        C2 = np.where(normalization == 0, np.nan, C2)
-        C2 /= C2[C2.argmax()]
-        C2 = 1.5*C2 - 0.5
-        return C2
-
-    def correlatebrute(self, u):
-        C2 = 0.0
-        for ibond in range(u[:, 0, 0].size):
-            for i in range(3):
-                for j in range(3):
-                    C2 += np.correlate(u[ibond, i, :] *
-                                       u[ibond, j, :],
-                                       u[ibond, i, :] *
-                                       u[ibond, j, :], 'full')
-        C2 = C2[C2.size/2:]
-        C2 /= np.arange(C2.size, 0, -1)
-        C2 /= C2[C2.argmax()]
-        C2 = 1.5*C2 - 0.5
-        return C2
-
-    def correlatesix(self, u):
-        C2 = 0.0
-        for ibond in range(u[:, 0, 0].size):
-            for i in range(3):
-                C2 += np.correlate(u[ibond, i, :]**2, u[ibond, i, :]**2,
-                                   'full')
-            C2 += 2 * (np.correlate(u[ibond, 0, :] * u[ibond, 1, :],
-                                    u[ibond, 0, :] * u[ibond, 1, :], 'full') +
-                       np.correlate(u[ibond, 0, :] * u[ibond, 2, :],
-                                    u[ibond, 0, :] * u[ibond, 2, :], 'full') +
-                       np.correlate(u[ibond, 1, :] * u[ibond, 2, :],
-                                    u[ibond, 1, :] * u[ibond, 2, :], 'full'))
-        C2 = C2[C2.size/2:]
-        C2 /= np.arange(C2.size, 0, -1)
-        C2 /= C2[C2.argmax()]
-        C2 = 1.5*C2 - 0.5
-        return C2
-
-    def acf_fft(self, d):
-        N = len(d)
-        fvi = np.fft.fft(d, n=2*N)
-        acf = fvi * np.conjugate(fvi)
-        acf = np.fft.ifft(acf)
-        return np.real(acf[:N])
-
-    def averagesinglefft(self, u):
-        C2 = 0.0
-        for ibond in range(u[:, 0, 0].size):
-            single = self.correlatesinglefft(u[ibond, :, :])
-            self.C2s.append(single)
-            C2 += single
-        C2 /= u[:, 0, 0].size
-        return C2
-
-    # arr is 3 x nframes
-    def correlatesinglefft(self, arr):
-        C2 = 0.0
-        for i in range(3):
-            C2 += self.acf_fft(arr[i, :]**2)
-        C2 += 2 * (self.acf_fft(arr[0, :] * arr[1, :]) +
-                   self.acf_fft(arr[0, :] * arr[2, :]) +
-                   self.acf_fft(arr[1, :] * arr[2, :]))
-        C2 /= np.arange(C2.size, 0, -1)
-        C2 /= C2[C2.argmax()]
-        C2 = 1.5*C2 - 0.5
-        return C2
-
-    def correlatefft(self, u):
-        C2 = 0.0
-        for ibond in range(u[:, 0, 0].size):
-            for i in range(3):
-                C2 += self.acf_fft(u[ibond, i, :]**2)
-            C2 += 2 * (self.acf_fft(u[ibond, 0, :] * u[ibond, 1, :]) +
-                       self.acf_fft(u[ibond, 0, :] * u[ibond, 2, :]) +
-                       self.acf_fft(u[ibond, 1, :] * u[ibond, 2, :]))
-        C2 /= np.arange(C2.size, 0, -1)
-        C2 /= C2[C2.argmax()]
-        C2 = 1.5*C2 - 0.5
-        return C2
+    @staticmethod
+    def lg2(x):
+        """Second Legendre polynomial"""
+        return (3*x*x - 1)/2
 
     def run(self, **kwargs):
-        """
-        Analyze trajectory and produce timeseries
-        """
-        if self.only_deltas:
-            return
-        if self.allwater is not None:
-            self.run_conditionally()
-            return
-        if self.bulk:
-            self.run_bulk()
-            return
-        if self.prefetch:
-            # All the selection to an array, this way is sometimes faster
-            # than selecting later. The array must fit to RAM.
-            if self.nproc == 1:
-                selection_out = self._selection_serial(self.universe,
-                                                       self.selection)
-            else:
-                # selection_out = self._selection_parallel(self.universe,
-                #                                         self.selection,
-                #                                         self.nproc)
-                # parallel selection to be implemented
-                selection_out = self._selection_serial(self.universe,
-                                                       self.selection)
+        """Analyze trajectory and produce timeseries"""
+
+        # All the selection to an array, this way is faster than selecting
+        # later.
+        if self.nproc == 1:
+            selection_out = self._selection_serial(
+                self.universe, self.selection)
         else:
-            selection_out = None
+            # selection_out = self._selection_parallel(self.universe,
+            # self.selection, self.nproc)
+            # parallel selection to be implemented
+            selection_out = self._selection_serial(
+                self.universe, self.selection)
         self.timeseries = []
-        for dt in range(self.dtmin, self.dtmax + 1):
-            print("Processing dt = ", dt)
-            output = self._getMeanOnePoint(self.universe, selection_out,
-                                           self.selection, dt, self.tf)
+        for dt in list(range(1, self.dtmax + 1)):
+            output = self._getMeanOnePoint(
+                self.universe, selection_out, self.selection, dt, self.tf)
             self.timeseries.append(output)
 
 
@@ -1569,3 +1183,391 @@ class SurvivalProbability(object):
             output = self._getMeanOnePoint(self.universe, selection_out,
                                            self.selection, dt, self.tf)
             self.timeseries.append(output)
+
+
+class BulkWaterOrientationalRelaxation(object):
+    r"""
+    Function to evaluate the Water Orientational Relaxation proposed by
+    Yu-ling Yeh and Chung-Yuan Mou [Yeh1999_]. WaterOrientationalRelaxation
+    indicates "how fast" water molecules are rotating or changing
+    direction. This is a time correlation function given by:
+
+    .. math::
+        C_{\hat u}(\tau)=\langle \mathit{P}_2[\mathbf{\hat{u}}(t_0)\cdot\mathbf{\hat{u}}(t_0+\tau)]\rangle
+
+    where :math:`P_2=(3x^2-1)/2` is the second-order Legendre polynomial
+    and :math:`\hat{u}` is a unit vector along HH, OH or dipole vector.
+
+    .. versionadded:: 0.11.0
+
+    :Arguments:
+      *universe*
+         Universe object
+      *selection*
+       Selection string, only models with 3-atom molecules (TIP3, TIP3P, etc)
+       are allowed if bulk=False. If bulk=True, also models with 4 sites
+       (TIP4P and variations) work if the order of the atoms is
+       (O, H1, H2, EP).
+      *t0*
+       Time where analysis begin
+      *tf*
+       Time where analysis end
+      *dtmax*
+       Maximum dt size window, dtmax < tf or it will crash.
+      *dtmin*
+       Minimum dt size window, 0 < dtmin < dtmax.
+      *bulk*
+       When True, the correlation functions are computed for molecules that
+       match the selection in the first frame, e.g. all the water molecules.
+       This is much more efficient than checking for matching molecules in
+       the selections for all two pairs of frames.
+      *single*
+       When True and if also bulk=True, the correlation functions are stored
+       for each water molecule.
+      *allwater*
+       When given, the selection will be compared to allwater to create a mask
+       in each frame of the trajectory. Only those molecules to which the mask
+       is true, contribute to the correlation function.
+      *ignore_gaps*
+       If allwater is given and ignore_gaps is True, the water molecule
+       contributes to the correlation function in all the subsequent frames
+       after the first one in which it is contained in the selection.
+    """
+
+    def __init__(self, universe, selection, t0, tf, dtmax, nproc=1, dtmin=1,
+                 bulk=False, single=False, allwater=None,
+                 ignore_gaps=False, only_deltas=False):
+        self.universe = universe
+        self.selection = selection
+        self.t0 = t0
+        self.tf = tf
+        self.dtmin = dtmin
+        self.dtmax = dtmax
+        self.nproc = nproc
+        self.timeseries = None
+        self.bulk = bulk
+        self.correlate = self.correlatefft
+        if single:
+            self.correlate = self.averagesinglefft
+        self.allwater = allwater
+        self.ignore_gaps = ignore_gaps
+        self.only_deltas = only_deltas
+
+        # Find out whether the water model is tip3p or tip4p (or any of
+        # the variants).
+        water = self.universe.select_atoms(selection)
+        # Check that selection is water:
+        if all([item.startswith('O') for item in water.residues.names[::3]]):
+            self.nsites = 3
+        elif all([item.startswith('O') for item in water.residues.names[::4]]):
+            self.nsites = 4
+        else:
+            print([r.names for r in water.residues[:10]])
+            print("Warning: Unknown water model/file format. " +
+                  "Results may vary.")
+        if self.nsites == 4 and not bulk:
+            print("ERROR: Only 3-site water models allowed when bulk=False")
+        if self.allwater is not None:
+            self.create_deltas()
+
+
+    # Second Legendre polynomial
+    def lg2(self, x):
+        return (3*x*x - 1.0)/2
+
+    def run_bulk(self, **kwargs):
+        """
+        Analyze trajectory in the case the atoms in the selection do not
+        change over the trajectory. This means we can optimize a lot by
+        ignoring checking for atoms that match in timestep t and t+dt.
+        We can also cache all orientation vectors from t0 to tf.
+        """
+        group = self.universe.select_atoms(self.selection)
+
+        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            # Compute unit vectors of orientation for the OH bonds
+            OHs = H1s-Os
+            OHnorm = np.linalg.norm(OHs, axis=1)
+            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
+            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
+            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
+
+        self.C2s = []
+        C2_OH = self.correlate(self.OHs)
+        del self.OHs
+        self.OHC2s = self.C2s
+        del self.C2s
+
+        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the HH bonds.
+            HHs = H1s-H2s
+            HHnorm = np.linalg.norm(HHs, axis=1)
+            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
+            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
+            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
+
+        self.C2s = []
+        C2_HH = self.correlate(self.HHs)
+        del self.HHs
+        self.HHC2s = self.C2s
+        del self.C2s
+
+        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                             dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the dipole vectors.
+            dips = (H1s+H2s)*0.5 - Os
+            dipnorm = np.linalg.norm(dips, axis=1)
+            self.dips[:, 0, i] = dips[:, 0] / dipnorm
+            self.dips[:, 1, i] = dips[:, 1] / dipnorm
+            self.dips[:, 2, i] = dips[:, 2] / dipnorm
+
+        self.C2s = []
+        C2_dip = self.correlate(self.dips)
+        del self.dips
+        self.dipC2s = self.C2s
+        del self.C2s
+
+        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
+        self.timeseries[:, 0] = C2_OH
+        self.timeseries[:, 1] = C2_HH
+        self.timeseries[:, 2] = C2_dip
+
+    def create_deltas(self):
+        group = self.universe.select_atoms(self.allwater)
+        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
+                              dtype=int)
+        # create array of residues to be included
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            selected = self.universe.select_atoms(self.selection)
+            self.delta[:, i] = np.where(
+                np.in1d(group.resids[::self.nsites],
+                        selected.resids[::self.nsites]),
+                1, 0)
+        if self.ignore_gaps:
+            for dlt in self.delta:
+                first = np.where(dlt == 1)[0]
+                if first.size > 0:
+                    dlt[first[0]:] = 1
+
+    def run_conditionally(self, **kwargs):
+        """
+        Analyze trajectory in the case the selection changes over the
+        trajectory. Still cache the orientation vectors from the whole
+        trajectory.
+        """
+        group = self.universe.select_atoms(self.allwater)
+        self.delta = np.zeros((group.n_residues, self.tf-self.t0),
+                              dtype=int)
+        # create array of residues to be included
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            selected = self.universe.select_atoms(self.selection)
+            self.delta[:, i] = np.where(
+                np.in1d(group.resids[::self.nsites],
+                        selected.resids[::self.nsites]),
+                1, 0)
+
+        if self.ignore_gaps:
+            for dlt in self.delta:
+                first = np.where(dlt == 1)[0]
+                if first.size > 0:
+                    dlt[first[0]:] = 1
+
+        self.OHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            # Compute unit vectors of orientation for the OH bonds
+            OHs = H1s-Os
+            OHnorm = np.linalg.norm(OHs, axis=1)
+            self.OHs[:, 0, i] = OHs[:, 0] / OHnorm
+            self.OHs[:, 1, i] = OHs[:, 1] / OHnorm
+            self.OHs[:, 2, i] = OHs[:, 2] / OHnorm
+
+        self.C2s = []
+        C2_OH = self.correlateconditionally(self.OHs, self.delta)
+        del self.OHs
+        self.OHC2s = self.C2s
+        del self.C2s
+
+        self.HHs = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                            dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the HH bonds.
+            HHs = H1s-H2s
+            HHnorm = np.linalg.norm(HHs, axis=1)
+            self.HHs[:, 0, i] = HHs[:, 0] / HHnorm
+            self.HHs[:, 1, i] = HHs[:, 1] / HHnorm
+            self.HHs[:, 2, i] = HHs[:, 2] / HHnorm
+
+        self.C2s = []
+        C2_HH = self.correlateconditionally(self.HHs, self.delta)
+        del self.HHs
+        self.HHC2s = self.C2s
+        del self.C2s
+
+        self.dips = np.zeros((group.n_residues, 3, self.tf-self.t0),
+                             dtype=float)
+        for i, ts in enumerate(self.universe.trajectory[self.t0:self.tf]):
+            ps = group.positions
+            Os = ps[0::self.nsites]
+            H1s = ps[1::self.nsites]
+            H2s = ps[2::self.nsites]
+
+            # Compute unit vectors of orientation for the dipole vectors.
+            dips = (H1s+H2s)*0.5 - Os
+            dipnorm = np.linalg.norm(dips, axis=1)
+            self.dips[:, 0, i] = dips[:, 0] / dipnorm
+            self.dips[:, 1, i] = dips[:, 1] / dipnorm
+            self.dips[:, 2, i] = dips[:, 2] / dipnorm
+
+        self.C2s = []
+        C2_dip = self.correlateconditionally(self.dips, self.delta)
+        del self.dips
+        self.dipC2s = self.C2s
+        del self.C2s
+
+        self.timeseries = np.zeros(shape=(len(C2_OH), 3), dtype=float)
+        self.timeseries[:, 0] = C2_OH
+        self.timeseries[:, 1] = C2_HH
+        self.timeseries[:, 2] = C2_dip
+
+    def correlateconditionally(self, u, condition):
+        """Compute C2(t) for vectors u in the cases where condition is
+        true at t' and t'+t."""
+        C2 = 0.0
+        normalization = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            C2ibond = 0.0
+            for i in range(3):
+                for j in range(3):
+                    C2ibond += np.correlate(u[ibond, i, :] * u[ibond, j, :] *
+                                            condition[ibond, :],
+                                            u[ibond, i, :] * u[ibond, j, :] *
+                                            condition[ibond, :], 'full')
+            z = np.correlate(condition[ibond, :], condition[ibond, :], 'full')
+
+            z = z[z.size/2:]
+            C2ibond = C2ibond[C2ibond.size/2:]
+
+            C2ibond /= np.where(z == 0, 1, z)
+            C2ibond = np.where(z == 0, 0.0, C2ibond)
+            normalization += np.where(z == 0, 0, 1)
+            C2 += C2ibond
+        C2 /= np.where(normalization == 0, 1, normalization)
+        C2 = np.where(normalization == 0, np.nan, C2)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def correlatebrute(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                for j in range(3):
+                    C2 += np.correlate(u[ibond, i, :] *
+                                       u[ibond, j, :],
+                                       u[ibond, i, :] *
+                                       u[ibond, j, :], 'full')
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def correlatesix(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                C2 += np.correlate(u[ibond, i, :]**2, u[ibond, i, :]**2,
+                                   'full')
+            C2 += 2 * (np.correlate(u[ibond, 0, :] * u[ibond, 1, :],
+                                    u[ibond, 0, :] * u[ibond, 1, :], 'full') +
+                       np.correlate(u[ibond, 0, :] * u[ibond, 2, :],
+                                    u[ibond, 0, :] * u[ibond, 2, :], 'full') +
+                       np.correlate(u[ibond, 1, :] * u[ibond, 2, :],
+                                    u[ibond, 1, :] * u[ibond, 2, :], 'full'))
+        C2 = C2[C2.size/2:]
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def acf_fft(self, d):
+        N = len(d)
+        fvi = np.fft.fft(d, n=2*N)
+        acf = fvi * np.conjugate(fvi)
+        acf = np.fft.ifft(acf)
+        return np.real(acf[:N])
+
+    def averagesinglefft(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            single = self.correlatesinglefft(u[ibond, :, :])
+            self.C2s.append(single)
+            C2 += single
+        C2 /= u[:, 0, 0].size
+        return C2
+
+    # arr is 3 x nframes
+    def correlatesinglefft(self, arr):
+        C2 = 0.0
+        for i in range(3):
+            C2 += self.acf_fft(arr[i, :]**2)
+        C2 += 2 * (self.acf_fft(arr[0, :] * arr[1, :]) +
+                   self.acf_fft(arr[0, :] * arr[2, :]) +
+                   self.acf_fft(arr[1, :] * arr[2, :]))
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def correlatefft(self, u):
+        C2 = 0.0
+        for ibond in range(u[:, 0, 0].size):
+            for i in range(3):
+                C2 += self.acf_fft(u[ibond, i, :]**2)
+            C2 += 2 * (self.acf_fft(u[ibond, 0, :] * u[ibond, 1, :]) +
+                       self.acf_fft(u[ibond, 0, :] * u[ibond, 2, :]) +
+                       self.acf_fft(u[ibond, 1, :] * u[ibond, 2, :]))
+        C2 /= np.arange(C2.size, 0, -1)
+        C2 /= C2[C2.argmax()]
+        C2 = 1.5*C2 - 0.5
+        return C2
+
+    def run(self, **kwargs):
+        """
+        Analyze trajectory and produce timeseries
+        """
+        if self.only_deltas:
+            return
+        if self.allwater is not None:
+            self.run_conditionally()
+            return
+        if self.bulk:
+            self.run_bulk()
+            return
+
+
