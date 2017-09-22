@@ -22,6 +22,7 @@
 
 # atomic number to element dict
 NUMBER_TO_ELEMENT = {
+    0: 'EP',  # to handle Amber topologies with TIP4P water.
     1: 'H',
     2: 'He',
     3: 'Li',
